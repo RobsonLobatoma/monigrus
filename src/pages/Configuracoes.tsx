@@ -157,6 +157,33 @@ export default function Configuracoes() {
   const [newGrupoSquad, setNewGrupoSquad] = useState("SQT1");
   const [newGrupoGestor, setNewGrupoGestor] = useState("Seu Madruga");
 
+  /* Edição de Grupo */
+  const [editGrupoModal, setEditGrupoModal] = useState(false);
+  const [editGrupoData, setEditGrupoData]   = useState<Grupo | null>(null);
+  const [editGrupoNome, setEditGrupoNome]   = useState("");
+  const [editGrupoSquad, setEditGrupoSquad] = useState("SQT1");
+  const [editGrupoGestor, setEditGrupoGestor] = useState("Seu Madruga");
+  const [editGrupoSla, setEditGrupoSla]     = useState<GrupoSLA>("DENTRO DO SLA");
+
+  const openEditGrupoModal = (g: Grupo) => {
+    setEditGrupoData(g);
+    setEditGrupoNome(g.nome);
+    setEditGrupoSquad(g.squad);
+    setEditGrupoGestor(g.gestor);
+    setEditGrupoSla(g.sla);
+    setEditGrupoModal(true);
+  };
+  const handleSaveGrupo = () => {
+    if (!editGrupoData || !editGrupoNome.trim()) return;
+    setGrupos((prev) => prev.map((x) =>
+      x.id === editGrupoData.id
+        ? { ...x, nome: editGrupoNome.trim(), squad: editGrupoSquad, gestor: editGrupoGestor, sla: editGrupoSla }
+        : x
+    ));
+    setEditGrupoModal(false);
+    setEditGrupoData(null);
+  };
+
   /* Hierarquia & Permissões */
   const [simCargo, setSimCargo] = useState<Cargo>("DIRETOR");
 
@@ -372,8 +399,8 @@ export default function Configuracoes() {
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground"><MessageSquare size={14} /><span className="font-semibold text-foreground">{g.mensagens}</span></div>
                 <p className="text-xs text-muted-foreground whitespace-pre-line">{g.ultimaAtividade.replace(" ", "\n")}</p>
                 <div className="flex items-center gap-3">
-                  <button className="text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
-                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                  <button onClick={() => openEditGrupoModal(g)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
+                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
                 </div>
               </div>
             ))}
@@ -651,6 +678,66 @@ export default function Configuracoes() {
             </div>
             <div className="px-6 pb-6">
               <button onClick={handleAtivarSquad} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Ativar Squad</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal: Editar Grupo ══ */}
+      {editGrupoModal && editGrupoData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h2 className="text-base font-bold uppercase tracking-wide text-foreground">Editar Grupo</h2>
+              <button onClick={() => setEditGrupoModal(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome do Grupo</label>
+                <input
+                  type="text"
+                  value={editGrupoNome}
+                  onChange={(e) => setEditGrupoNome(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Squad</label>
+                <select
+                  value={editGrupoSquad}
+                  onChange={(e) => setEditGrupoSquad(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {["SQT1","SQT2","SQT3","MASTER","ELITE"].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Gestor Responsável</label>
+                <select
+                  value={editGrupoGestor}
+                  onChange={(e) => setEditGrupoGestor(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {GESTORES_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">SLA</label>
+                <div className="flex gap-3">
+                  {(["DENTRO DO SLA", "FORA DO SLA"] as GrupoSLA[]).map((sla) => (
+                    <button
+                      key={sla}
+                      onClick={() => setEditGrupoSla(sla)}
+                      className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${editGrupoSla === sla ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                    >
+                      {sla}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="px-6 pb-6">
+              <button onClick={handleSaveGrupo} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
