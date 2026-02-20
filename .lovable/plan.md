@@ -1,70 +1,49 @@
 
-## Diagnóstico Real
+## Escopo
 
-O código já tem `background: "transparent"` no `STATUS_STYLE`, então o problema **não é o `STATUS_STYLE`**. O problema é que o `<span>` do badge com `background: "transparent"` herda a cor do elemento pai (`<td>` → `<tr>` → `<tbody>` → `bg-card`). Dependendo do tema (claro/escuro), isso pode aparecer como uma tonalidade suave ao invés de branco puro visível.
+Apenas a célula **STATUS** nos dois arquivos:
+- `src/pages/Hub.tsx` — linhas 225–240
+- `src/pages/Monitoramento.tsx` — linhas 200–215
 
-A solução definitiva é usar **`backgroundColor: "#ffffff"`** (branco puro explícito) no `<span>` do STATUS, combinado com os outros ajustes visuais solicitados:
-- `borderRadius: "999px"` (pill, em vez de `6px`)
-- `padding: "4px 10px"`
-- `fontWeight: 600`
-- `border: "1px solid #E5E7EB"`
+---
 
-## Arquivos Afetados
+## O que Muda
 
-Apenas **dois arquivos**, apenas a célula STATUS:
-- `src/pages/Hub.tsx` — linha 225–239
-- `src/pages/Monitoramento.tsx` — linha 200–214
+O `<span>` do STATUS perde toda decoração e passa a ser texto simples preto:
 
-## Mudanças Exatas
+| Propriedade | Antes | Depois |
+|---|---|---|
+| `border` | `1px solid #E5E7EB` | removida |
+| `borderRadius` | `999px` | removido |
+| `backgroundColor` | `#ffffff` | removido |
+| `background` | `none` | removido |
+| `padding` | `4px 10px` | removido |
+| `color` | cor do status (verde/amarelo/vermelho) | `#111827` (preto) |
+| `fontWeight` | `600` | `500` (normal) |
 
-### Em ambos os arquivos — o `<span>` do STATUS passa de:
+O `<span>` se torna simplesmente:
 ```tsx
 <span style={{
   display: "inline-flex",
   alignItems: "center",
-  padding: "3px 10px",
-  borderRadius: "6px",
   fontSize: "11px",
-  fontWeight: 700,
+  fontWeight: 500,
   letterSpacing: "0.04em",
-  background: stsStyle.background,   // "transparent" — herdava cor do pai
-  color: stsStyle.color,
-  border: stsStyle.border,
+  color: "#111827",
   whiteSpace: "nowrap",
 }}>
+  {row.status}
+</span>
 ```
 
-### Para:
-```tsx
-<span style={{
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: "999px",
-  fontSize: "11px",
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  backgroundColor: "#ffffff",        // branco puro explícito, sem herança
-  background: "none",                // cancela qualquer background shorthand
-  color: stsStyle.color,
-  border: "1px solid #E5E7EB",       // borda cinza sutil fixa, sem depender do objeto
-  whiteSpace: "nowrap",
-}}>
-```
+O objeto `STATUS_STYLE` (que só contém `color`) não é mais necessário para o texto — mas pode ser mantido ou removido. Para manter o código limpo, será removido dos dois arquivos, e a variável `stsStyle` deixará de ser declarada no `map`.
 
-### O `STATUS_STYLE` também é simplificado para remover o campo `background` (não é mais necessário):
-```tsx
-const STATUS_STYLE: Record<HubStatus, { color: string }> = {
-  RESOLVIDO: { color: "#16A34A" },
-  PENDENTE:  { color: "#D97706" },
-  CRÍTICO:   { color: "#DC2626" },
-};
-```
+---
 
 ## Garantias
 
-- SATISFAÇÃO e SCORE: completamente intactos (blocos coloridos full-height)
+- SATISFAÇÃO e SCORE: completamente intactos
 - Todas as outras colunas: sem alteração
+- Layout, alturas, larguras, bordas de separação: sem alteração
 - Lógica de filtro/busca: sem alteração
-- Layout, altura das linhas (56px), larguras de colunas: sem alteração
 - Aplicado em Hub.tsx (PESSOAL) e Monitoramento.tsx (GLOBAL)
