@@ -1,116 +1,114 @@
 
-## Diagnóstico Completo
+## Sistema de Login MONIGRU — Integrado ao Supabase Auth + RBAC
 
-Após analisar o código e o banco de dados Supabase, aqui está a situação real:
+### Visão geral
 
-**Tabela `grupos`** — existe, mas faltam as colunas: `gestor`, `sla`, `status`, `mensagens`, `ultima_atividade`. Atualmente só tem: `id`, `nome`, `team_id`, `sector_id`, `ativo`, `created_at`, `updated_at`.
-
-**Tabela `teams`** — existe, mas faltam: `supervisor`, `gestores`. Atualmente só tem: `id`, `name`, `is_active`, `created_at`, `updated_at`.
-
-**Tabela `user_profiles`** — existe com: `user_id`, `full_name`, `email`, `team_id`, `sector_id`, `is_active`. Precisa apenas ser conectada.
-
-**Tabela `user_roles`** — existe com: `user_id`, `role` (enum `app_role`). Será usada em conjunto com `user_profiles`.
-
-**RLS (Segurança)** — todas as tabelas têm RLS ativo. Leitura exige usuário autenticado. Escrita exige role `DIRETOR` ou `GERENTE`. Como o login ainda não está implementado, as queries retornarão vazio — os dados mockados serão mantidos como fallback visual.
+O sistema de login será integrado ao Supabase Auth existente, respeitando as políticas RLS e a hierarquia de cargos já configuradas (`DIRETOR`, `GERENTE`, `SUPERVISOR`, `OPERACIONAL`). A tela seguirá o design da imagem de referência: logo, card centralizado, campos email/senha, link de recuperação de senha e link para criar conta.
 
 ---
 
-## O que será feito
-
-### Etapa 1 — Migração do banco de dados
-
-Adicionar as colunas ausentes às tabelas `grupos` e `teams`:
-
-```sql
--- teams
-ALTER TABLE public.teams
-  ADD COLUMN IF NOT EXISTS supervisor text,
-  ADD COLUMN IF NOT EXISTS gestores   text[] NOT NULL DEFAULT '{}';
-
--- grupos
-ALTER TABLE public.grupos
-  ADD COLUMN IF NOT EXISTS gestor           text,
-  ADD COLUMN IF NOT EXISTS sla              text NOT NULL DEFAULT 'DENTRO DO SLA',
-  ADD COLUMN IF NOT EXISTS status           text NOT NULL DEFAULT 'PENDENTE',
-  ADD COLUMN IF NOT EXISTS mensagens        integer NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS ultima_atividade text;
-```
-
-### Etapa 2 — Hooks React Query compartilhados
-
-Criar três hooks de dados que qualquer página pode importar. Todos invalidam o cache automaticamente após mutações, forçando re-renderização em toda a aplicação:
-
-**`src/hooks/useTeams.ts`**
-- `useTeams()` — busca todos os squads ativos
-- `useCreateTeam(onSuccess)` — insere novo squad
-- `useUpdateTeam(onSuccess)` — atualiza squad por id
-- `useDeleteTeam(onSuccess)` — remove squad (soft delete: `is_active = false`)
-
-**`src/hooks/useGrupos.ts`**
-- `useGrupos()` — busca todos os grupos ativos (`ativo = true`)
-- `useCreateGrupo(onSuccess)` — insere novo grupo
-- `useUpdateGrupo(onSuccess)` — atualiza grupo por id
-- `useDeleteGrupo(onSuccess)` — soft delete (`ativo = false`)
-
-**`src/hooks/useUserProfiles.ts`**
-- `useUserProfiles()` — busca `user_profiles` com join em `user_roles`
-- `useUpdateUserProfile(onSuccess)` — atualiza nome, email, team_id
-- `useDeleteUserProfile(onSuccess)` — desativa (`is_active = false`)
-
-Todos usam a chave de cache `["teams"]`, `["grupos"]`, `["user_profiles"]` e chamam `queryClient.invalidateQueries()` após cada mutação.
-
-### Etapa 3 — Configuracoes.tsx
-
-Substituir os `useState(initialXxx)` pelos hooks:
-
-| Seção | Antes | Depois |
-|---|---|---|
-| Usuários & Cargos | `useState(initialUsers)` | `useUserProfiles()` |
-| Gestão de Squads | `useState(initialSquads)` | `useTeams()` |
-| Gestão de Grupos | `useState(initialGrupos)` | `useGrupos()` |
-
-- Adicionar skeleton/spinner enquanto `isLoading = true`
-- Fallback nos dados mockados caso o usuário não esteja autenticado (array vazio do Supabase → exibir mensagem de aviso)
-- Todos os handlers de salvar/criar/deletar chamam as mutations dos hooks
-
-### Etapa 4 — Hub.tsx
-
-Substituir o array estático `GRUPOS` pelo hook `useGrupos()`:
-- Cards de métricas (CRÍTICOS, SCORE MÉDIO, RESOLVIDOS) calculados dinamicamente dos dados reais
-- Spinner durante carregamento
-- Fallback para array vazio com mensagem informativa
-
-### Etapa 5 — Monitoramento.tsx
-
-Substituir o array estático `mockData` pelo hook `useGrupos()`:
-- Adaptar os campos do banco (`nome`, `gestor`, `squad`, `sla`, `status`) para o formato da tabela
-- Filtro de busca continua funcionando normalmente
-
-### Fluxo de propagação automática
+### Como o fluxo vai funcionar
 
 ```text
-Usuário edita/cria/remove em Configurações
-        ↓ mutation Supabase
-  React Query invalida cache ["grupos"] ou ["teams"]
-        ↓ refetch automático
-  Hub.tsx + Monitoramento.tsx re-renderizam
-  com os dados atualizados imediatamente
+Usuário acessa qualquer rota
+         ↓
+  AuthContext verifica sessão Supabase
+         ↓
+  Não autenticado → redireciona para /login
+  Autenticado     → carrega app normalmente
+         ↓
+  Após login: busca user_profiles + user_roles
+  do usuário logado (nome, cargo, equipe)
+         ↓
+  Topbar exibe nome real e cargo real do BD
+  Sidebar "Sair" chama supabase.auth.signOut()
 ```
-
-### Aviso sobre autenticação
-
-O Supabase tem RLS ativo em todas as tabelas. Sem login, as queries retornam vazio. Um banner de aviso será exibido nas páginas caso os dados estejam vazios, orientando que o login precisa ser implementado para que os dados persistam. Isso não quebra a interface — ela simplesmente exibirá listas vazias ou os fallbacks.
 
 ---
 
-## Arquivos a criar/modificar
+### Arquivos a criar
+
+**1. `src/contexts/AuthContext.tsx`** — Contexto global de autenticação
+- Escuta `onAuthStateChange` do Supabase
+- Expõe `session`, `user`, `profile` (do `user_profiles`), `role` (do `user_roles`), e `signOut()`
+- Busca automaticamente o perfil e cargo após login
+
+**2. `src/pages/Login.tsx`** — Tela de login (design baseado na imagem)
+- Logo MONIGRU com inicial "M" em fundo azul (cor `primary` do projeto)
+- Título "MONIGRU" + subtítulo "Sistema de Monitoramento de Grupos"
+- Card centralizado com:
+  - Campo Email com label
+  - Campo Senha com toggle de visibilidade (olho)
+  - Link "Esqueceu sua senha?" → vai para `/recuperar-senha`
+  - Botão "Entrar" (full width, cor primária)
+  - Divisor "OU CONTINUE COM" + botão Google (opcional, configurável)
+  - Link "Não tem uma conta? Criar conta" → vai para `/cadastro`
+- Fundo com cor `muted` suave (cinza claro, ou `bg-muted`)
+
+**3. `src/pages/Cadastro.tsx`** — Tela de criação de conta
+- Formulário: nome completo, email, senha, confirmação de senha
+- Cria conta via `supabase.auth.signUp()`
+- Após cadastro, redireciona para `/login` com mensagem de confirmação
+
+**4. `src/pages/RecuperarSenha.tsx`** — Recuperação de senha
+- Campo email
+- Chama `supabase.auth.resetPasswordForEmail()`
+- Mostra confirmação de envio
+
+**5. `src/pages/RedefinirSenha.tsx`** — Redefinição de senha (rota `/redefinir-senha`)
+- Detecta `type=recovery` na URL
+- Formulário nova senha + confirmação
+- Chama `supabase.auth.updateUser({ password })`
+
+**6. `src/components/ProtectedRoute.tsx`** — Guarda de rota
+- Redireciona para `/login` se não autenticado
+- Mostra spinner enquanto verifica sessão
+
+---
+
+### Arquivos a modificar
+
+**7. `src/App.tsx`**
+- Envolve tudo no `AuthProvider`
+- Rotas públicas: `/login`, `/cadastro`, `/recuperar-senha`, `/redefinir-senha`
+- Rotas protegidas: todas as outras, envolvidas por `<ProtectedRoute>`
+- Layout `AppLayout` apenas nas rotas protegidas
+
+**8. `src/components/AppLayout.tsx`**
+- Topbar: substituir "Dr. Ricardo / Diretor" hardcoded pelo nome e cargo real do `AuthContext`
+- Inicial do avatar gerada a partir do nome real
+
+**9. `src/components/AppSidebar.tsx`**
+- Botão "Sair" chama `signOut()` do `AuthContext`
+- Filtra itens de navegação conforme o cargo do usuário logado (baseado em `ACCESS_MATRIX` já existente em Configurações)
+
+---
+
+### Segurança e integração com RLS
+
+- As RLS policies já existentes (`user_profiles_read_self`, `user_roles_read_self`, `grupos_select_role_scoped`, etc.) passarão a funcionar assim que o usuário estiver autenticado
+- O token JWT do Supabase é enviado automaticamente em todas as queries pelo cliente existente
+- `can_manage_users()` no banco retorna `true` para DIRETOR e GERENTE → eles podem editar em Configurações
+- Não há dados sensíveis armazenados no `localStorage` além da sessão gerenciada pelo Supabase
+
+---
+
+### Tabela de arquivos
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/migrations/..._add_team_grupo_columns.sql` | Criar — adiciona colunas ausentes |
-| `src/hooks/useTeams.ts` | Criar — hook CRUD de squads |
-| `src/hooks/useGrupos.ts` | Criar — hook CRUD de grupos |
-| `src/hooks/useUserProfiles.ts` | Criar — hook CRUD de usuários |
-| `src/pages/Configuracoes.tsx` | Modificar — conectar os 3 hooks |
-| `src/pages/Hub.tsx` | Modificar — dados reais via `useGrupos()` |
-| `src/pages/Monitoramento.tsx` | Modificar — dados reais via `useGrupos()` |
+| `src/contexts/AuthContext.tsx` | Criar — contexto global de auth |
+| `src/pages/Login.tsx` | Criar — tela de login |
+| `src/pages/Cadastro.tsx` | Criar — tela de cadastro |
+| `src/pages/RecuperarSenha.tsx` | Criar — recuperar senha |
+| `src/pages/RedefinirSenha.tsx` | Criar — redefinir senha |
+| `src/components/ProtectedRoute.tsx` | Criar — guarda de rotas |
+| `src/App.tsx` | Modificar — rotas públicas/protegidas + AuthProvider |
+| `src/components/AppLayout.tsx` | Modificar — topbar com dados reais do usuário |
+| `src/components/AppSidebar.tsx` | Modificar — signOut funcional + filtro de menu por cargo |
+
+---
+
+### Nota sobre Google OAuth
+
+O botão "Continuar com Google" será incluído na tela de login, mas exigirá configuração manual no painel do Supabase (Authentication → Providers → Google). Será exibida uma instrução clara na interface caso o provedor não esteja ativo.
