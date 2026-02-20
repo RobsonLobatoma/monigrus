@@ -32,11 +32,6 @@ const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
 
-const STATUS_STYLE: Record<StatusType, { color: string }> = {
-  RESOLVIDO: { color: "#16A34A" },
-  PENDENTE:  { color: "#D97706" },
-  CRÍTICO:   { color: "#DC2626" },
-};
 
 const thStyle: React.CSSProperties = {
   padding: "12px 12px",
@@ -146,7 +141,6 @@ export default function Monitoramento() {
             ) : (
               filtered.map((row, idx) => {
                 const satStyle = SAT_STYLE[row.satisfacao];
-                const stsStyle = STATUS_STYLE[row.status];
                 const isLast = idx === filtered.length - 1;
                 const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
 
@@ -195,20 +189,15 @@ export default function Monitoramento() {
                       </div>
                     </td>
 
-                    {/* STATUS — neutral pill badge */}
+                    {/* STATUS — plain black text */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <span style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "4px 10px",
-                        borderRadius: "999px",
                         fontSize: "11px",
-                        fontWeight: 600,
+                        fontWeight: 500,
                         letterSpacing: "0.04em",
-                        backgroundColor: "#ffffff",
-                        background: "none",
-                        color: stsStyle.color,
-                        border: "1px solid #E5E7EB",
+                        color: "#111827",
                         whiteSpace: "nowrap",
                       }}>
                         {row.status}
