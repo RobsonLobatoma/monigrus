@@ -1,115 +1,105 @@
 
-## Objetivo
+## Diagnóstico Completo
 
-Conectar as três seções de Configurações ao Supabase para que toda criação, edição e exclusão persista no banco de dados e se reflita automaticamente nas páginas Hub e Monitoramento, que passarão a consumir os mesmos dados reais.
+Após analisar o código e o banco de dados Supabase, aqui está a situação real:
 
----
+**Tabela `grupos`** — existe, mas faltam as colunas: `gestor`, `sla`, `status`, `mensagens`, `ultima_atividade`. Atualmente só tem: `id`, `nome`, `team_id`, `sector_id`, `ativo`, `created_at`, `updated_at`.
 
-## Diagnóstico da situação atual
+**Tabela `teams`** — existe, mas faltam: `supervisor`, `gestores`. Atualmente só tem: `id`, `name`, `is_active`, `created_at`, `updated_at`.
 
-Todas as alterações feitas em Configurações (usuários, squads, grupos) vivem apenas em estado local React (useState). Ao recarregar a página os dados voltam ao mock. As páginas Hub e Monitoramento também usam dados mockados independentes.
+**Tabela `user_profiles`** — existe com: `user_id`, `full_name`, `email`, `team_id`, `sector_id`, `is_active`. Precisa apenas ser conectada.
 
----
+**Tabela `user_roles`** — existe com: `user_id`, `role` (enum `app_role`). Será usada em conjunto com `user_profiles`.
 
-## Tabelas do Supabase envolvidas
-
-| Seção | Tabela(s) principal(is) | O que falta |
-|---|---|---|
-| Usuários & Cargos | `user_profiles` + `user_roles` | Colunas existem; falta apenas buscar e gravar |
-| Gestão de Squads | `teams` | Falta: `supervisor` (text), `gestores` (text[]) |
-| Gestão de Grupos | `grupos` | Falta: `gestor` (text), `sla` (text), `status` (text), `mensagens` (int), `ultima_atividade` (text) |
+**RLS (Segurança)** — todas as tabelas têm RLS ativo. Leitura exige usuário autenticado. Escrita exige role `DIRETOR` ou `GERENTE`. Como o login ainda não está implementado, as queries retornarão vazio — os dados mockados serão mantidos como fallback visual.
 
 ---
 
-## Etapa 1 — Migração do banco de dados
+## O que será feito
 
-Adicionar as colunas ausentes via migration:
+### Etapa 1 — Migração do banco de dados
+
+Adicionar as colunas ausentes às tabelas `grupos` e `teams`:
 
 ```sql
--- Squads / teams
+-- teams
 ALTER TABLE public.teams
   ADD COLUMN IF NOT EXISTS supervisor text,
   ADD COLUMN IF NOT EXISTS gestores   text[] NOT NULL DEFAULT '{}';
 
--- Grupos
+-- grupos
 ALTER TABLE public.grupos
-  ADD COLUMN IF NOT EXISTS gestor            text,
-  ADD COLUMN IF NOT EXISTS sla               text NOT NULL DEFAULT 'DENTRO DO SLA',
-  ADD COLUMN IF NOT EXISTS status            text NOT NULL DEFAULT 'PENDENTE',
-  ADD COLUMN IF NOT EXISTS mensagens         integer NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS ultima_atividade  text;
+  ADD COLUMN IF NOT EXISTS gestor           text,
+  ADD COLUMN IF NOT EXISTS sla              text NOT NULL DEFAULT 'DENTRO DO SLA',
+  ADD COLUMN IF NOT EXISTS status           text NOT NULL DEFAULT 'PENDENTE',
+  ADD COLUMN IF NOT EXISTS mensagens        integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS ultima_atividade text;
 ```
 
----
+### Etapa 2 — Hooks React Query compartilhados
 
-## Etapa 2 — Hooks de dados reutilizáveis
-
-Criar dois hooks com React Query para que qualquer página da aplicação possa consumir os mesmos dados:
+Criar três hooks de dados que qualquer página pode importar. Todos invalidam o cache automaticamente após mutações, forçando re-renderização em toda a aplicação:
 
 **`src/hooks/useTeams.ts`**
-- `useTeams()` — lista de squads do Supabase
-- `useCreateTeam()` — insere novo squad
-- `useUpdateTeam()` — atualiza squad por id
-- `useDeleteTeam()` — desativa ou remove squad
+- `useTeams()` — busca todos os squads ativos
+- `useCreateTeam(onSuccess)` — insere novo squad
+- `useUpdateTeam(onSuccess)` — atualiza squad por id
+- `useDeleteTeam(onSuccess)` — remove squad (soft delete: `is_active = false`)
 
 **`src/hooks/useGrupos.ts`**
-- `useGrupos()` — lista de grupos do Supabase
-- `useCreateGrupo()` — insere novo grupo
-- `useUpdateGrupo()` — atualiza grupo por id
-- `useDeleteGrupo()` — marca ativo = false ou remove
+- `useGrupos()` — busca todos os grupos ativos (`ativo = true`)
+- `useCreateGrupo(onSuccess)` — insere novo grupo
+- `useUpdateGrupo(onSuccess)` — atualiza grupo por id
+- `useDeleteGrupo(onSuccess)` — soft delete (`ativo = false`)
 
 **`src/hooks/useUserProfiles.ts`**
-- `useUserProfiles()` — lista user_profiles + user_roles
-- `useUpdateUserProfile()` — atualiza nome, email, team_id
-- `useDeleteUserProfile()` — desativa usuário (is_active = false)
+- `useUserProfiles()` — busca `user_profiles` com join em `user_roles`
+- `useUpdateUserProfile(onSuccess)` — atualiza nome, email, team_id
+- `useDeleteUserProfile(onSuccess)` — desativa (`is_active = false`)
 
-Todos os hooks invalidam o cache do React Query após mutações, propagando a atualização imediatamente para qualquer componente que consuma o mesmo hook.
+Todos usam a chave de cache `["teams"]`, `["grupos"]`, `["user_profiles"]` e chamam `queryClient.invalidateQueries()` após cada mutação.
 
----
+### Etapa 3 — Configuracoes.tsx
 
-## Etapa 3 — Configuracoes.tsx
+Substituir os `useState(initialXxx)` pelos hooks:
 
-Substituir todos os `useState(initialXxx)` por dados vindos dos hooks:
+| Seção | Antes | Depois |
+|---|---|---|
+| Usuários & Cargos | `useState(initialUsers)` | `useUserProfiles()` |
+| Gestão de Squads | `useState(initialSquads)` | `useTeams()` |
+| Gestão de Grupos | `useState(initialGrupos)` | `useGrupos()` |
 
-- **Usuários & Cargos**: `useUserProfiles()` para listar; `useUpdateUserProfile()` ao salvar edição; `useDeleteUserProfile()` ao clicar no lixo.
-- **Gestão de Squads**: `useTeams()` para listar; `useCreateTeam()` ao criar; `useUpdateTeam()` ao salvar edição; `useDeleteTeam()` ao remover.
-- **Gestão de Grupos**: `useGrupos()` para listar; `useCreateGrupo()` ao criar; `useUpdateGrupo()` ao salvar edição; `useDeleteGrupo()` ao remover.
+- Adicionar skeleton/spinner enquanto `isLoading = true`
+- Fallback nos dados mockados caso o usuário não esteja autenticado (array vazio do Supabase → exibir mensagem de aviso)
+- Todos os handlers de salvar/criar/deletar chamam as mutations dos hooks
 
-Adicionar estados de carregamento (spinner/skeleton) enquanto os dados chegam do banco.
+### Etapa 4 — Hub.tsx
 
----
+Substituir o array estático `GRUPOS` pelo hook `useGrupos()`:
+- Cards de métricas (CRÍTICOS, SCORE MÉDIO, RESOLVIDOS) calculados dinamicamente dos dados reais
+- Spinner durante carregamento
+- Fallback para array vazio com mensagem informativa
 
-## Etapa 4 — Hub.tsx e Monitoramento.tsx
+### Etapa 5 — Monitoramento.tsx
 
-Substituir os arrays `GRUPOS` e `mockData` pelos hooks reais:
+Substituir o array estático `mockData` pelo hook `useGrupos()`:
+- Adaptar os campos do banco (`nome`, `gestor`, `squad`, `sla`, `status`) para o formato da tabela
+- Filtro de busca continua funcionando normalmente
 
-- **Hub.tsx** → `useGrupos()` filtrando pelos grupos do usuário logado.
-- **Monitoramento.tsx** → `useGrupos()` com visão global.
-
-Os cards de métricas (CRÍTICOS, SCORE MÉDIO, RESOLVIDOS) passam a ser calculados dinamicamente a partir dos dados reais.
-
----
-
-## Fluxo após a implementação
+### Fluxo de propagação automática
 
 ```text
-Configurações (edita grupo)
-        ↓
-  Supabase (grupos table)
-        ↓
-  React Query cache invalidado
-        ↓
-  Hub + Monitoramento re-renderizam
-  com os dados atualizados
+Usuário edita/cria/remove em Configurações
+        ↓ mutation Supabase
+  React Query invalida cache ["grupos"] ou ["teams"]
+        ↓ refetch automático
+  Hub.tsx + Monitoramento.tsx re-renderizam
+  com os dados atualizados imediatamente
 ```
 
----
+### Aviso sobre autenticação
 
-## Nota sobre autenticação e RLS
-
-As políticas de segurança (RLS) do Supabase exigem que o usuário esteja autenticado. As tabelas `teams` e `grupos` permitem leitura somente para usuários com os roles `DIRETOR`, `GERENTE`, `SUPERVISOR` ou `OPERACIONAL`. Escrita exige `DIRETOR` ou `GERENTE` (`can_manage_users`).
-
-Como o sistema ainda não possui login implementado, as queries de leitura e escrita retornarão vazio ou erro de permissão para usuários não autenticados. Será adicionado um aviso visível na interface caso os dados não retornem, orientando a implementar autenticação. Os dados mockados serão mantidos como fallback enquanto não há usuário logado.
+O Supabase tem RLS ativo em todas as tabelas. Sem login, as queries retornam vazio. Um banner de aviso será exibido nas páginas caso os dados estejam vazios, orientando que o login precisa ser implementado para que os dados persistam. Isso não quebra a interface — ela simplesmente exibirá listas vazias ou os fallbacks.
 
 ---
 
@@ -117,10 +107,10 @@ Como o sistema ainda não possui login implementado, as queries de leitura e esc
 
 | Arquivo | Ação |
 |---|---|
-| `supabase/migrations/xxx_add_team_grupo_columns.sql` | Criar (migration) |
-| `src/hooks/useTeams.ts` | Criar |
-| `src/hooks/useGrupos.ts` | Criar |
-| `src/hooks/useUserProfiles.ts` | Criar |
-| `src/pages/Configuracoes.tsx` | Modificar (conectar hooks) |
-| `src/pages/Hub.tsx` | Modificar (dados reais) |
-| `src/pages/Monitoramento.tsx` | Modificar (dados reais) |
+| `supabase/migrations/..._add_team_grupo_columns.sql` | Criar — adiciona colunas ausentes |
+| `src/hooks/useTeams.ts` | Criar — hook CRUD de squads |
+| `src/hooks/useGrupos.ts` | Criar — hook CRUD de grupos |
+| `src/hooks/useUserProfiles.ts` | Criar — hook CRUD de usuários |
+| `src/pages/Configuracoes.tsx` | Modificar — conectar os 3 hooks |
+| `src/pages/Hub.tsx` | Modificar — dados reais via `useGrupos()` |
+| `src/pages/Monitoramento.tsx` | Modificar — dados reais via `useGrupos()` |
