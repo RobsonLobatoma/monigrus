@@ -1,37 +1,29 @@
 import { useState } from "react";
-import { Shield, Search } from "lucide-react";
+import { Shield, Search, Loader2 } from "lucide-react";
+import { useGrupos } from "@/hooks/useGrupos";
 
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type StatusType = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 
-interface MonitoringRow {
-  id: number;
-  dataHora: string;
-  grupo: string;
-  gestorTrafego: string;
-  squad: string;
-  satisfacao: Satisfacao;
-  score: number;
-  status: StatusType;
-  descricao: string;
+function scoreToSatisfacao(mensagens: number): Satisfacao {
+  const score = Math.max(0, 100 - mensagens);
+  if (score >= 80) return "Ótimo";
+  if (score >= 50) return "Regular";
+  return "Ruim";
 }
 
-const mockData: MonitoringRow[] = [
-  { id: 1, dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",    gestorTrafego: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: "Cliente confirmou recebimento do parecer." },
-  { id: 2, dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",    gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: "Cliente pediu atualização dos honorários." },
-  { id: 3, dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",    gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: "Cliente reclamou falta de posicionamento." },
-  { id: 4, dataHora: "27/12/2026\n06:00", grupo: "Advogados SP",           gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: "Cliente analisando proposta." },
-  { id: 5, dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",        gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: "4 mensagens sem retorno." },
-  { id: 6, dataHora: "27/12/2026\n06:30", grupo: "Lima & Ferreira",        gestorTrafego: "Ana Costa",   squad: "SQT1", satisfacao: "Ótimo",   score: 91, status: "RESOLVIDO", descricao: "Acordo firmado com sucesso." },
-  { id: 7, dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar." },
-];
+function toStatus(s: string): StatusType {
+  const up = s?.toUpperCase();
+  if (up === "RESOLVIDO") return "RESOLVIDO";
+  if (up === "CRÍTICO" || up === "CRITICO") return "CRÍTICO";
+  return "PENDENTE";
+}
 
 const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ótimo:   { background: "#22c55e", color: "#ffffff" },
   Regular: { background: "#facc15", color: "#000000" },
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
-
 
 const thStyle: React.CSSProperties = {
   padding: "12px 12px",
@@ -71,13 +63,14 @@ const cellFill: React.CSSProperties = {
 
 export default function Monitoramento() {
   const [search, setSearch] = useState("");
+  const { data: grupos = [], isLoading } = useGrupos();
 
-  const filtered = mockData.filter(
-    (row) =>
-      row.grupo.toLowerCase().includes(search.toLowerCase()) ||
-      row.gestorTrafego.toLowerCase().includes(search.toLowerCase()) ||
-      row.squad.toLowerCase().includes(search.toLowerCase()) ||
-      row.status.toLowerCase().includes(search.toLowerCase())
+  const filtered = grupos.filter(
+    (g) =>
+      g.nome.toLowerCase().includes(search.toLowerCase()) ||
+      (g.gestor ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (g.sla ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (g.status ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -106,122 +99,132 @@ export default function Monitoramento() {
 
       {/* Table card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
-          <colgroup>
-            <col style={{ width: "90px" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "60px" }} />
-            <col style={{ width: "130px" }} />
-            <col style={{ width: "80px" }} />
-            <col style={{ width: "120px" }} />
-            <col />
-          </colgroup>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
+            <Loader2 size={20} className="animate-spin" />
+            <span className="text-sm">Carregando dados de monitoramento...</span>
+          </div>
+        ) : (
+          <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "130px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
+              <col style={{ width: "140px" }} />
+              <col />
+            </colgroup>
 
-          <thead>
-            <tr>
-              <th style={{ ...thStyle, paddingLeft: "20px" }}>DATA/HORA</th>
-              <th style={thStyle}>GRUPO</th>
-              <th style={thStyle}>GESTOR DE TRÁFEGO</th>
-              <th style={thStyle}>SQUAD</th>
-              <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
-              <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
-              <th style={thStyle}>STATUS</th>
-              <th style={thStyle}>DESCRIÇÃO</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {filtered.length === 0 ? (
+            <thead>
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
-                  Nenhum resultado encontrado.
-                </td>
+                <th style={{ ...thStyle, paddingLeft: "20px" }}>GRUPO</th>
+                <th style={thStyle}>GESTOR DE TRÁFEGO</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
+                <th style={thStyle}>STATUS</th>
+                <th style={thStyle}>SLA</th>
+                <th style={thStyle}>ÚLTIMA ATIVIDADE</th>
               </tr>
-            ) : (
-              filtered.map((row, idx) => {
-                const satStyle = SAT_STYLE[row.satisfacao];
-                const isLast = idx === filtered.length - 1;
-                const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
+            </thead>
 
-                return (
-                  <tr key={row.id} style={{ height: "56px" }}>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                    {grupos.length === 0
+                      ? "Nenhum grupo cadastrado. Adicione grupos em Configurações para monitorá-los aqui."
+                      : "Nenhum resultado encontrado."}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row, idx) => {
+                  const satisfacao = scoreToSatisfacao(row.mensagens ?? 0);
+                  const score = Math.max(0, 100 - (row.mensagens ?? 0));
+                  const status = toStatus(row.status);
+                  const satStyle = SAT_STYLE[satisfacao];
+                  const isLast = idx === filtered.length - 1;
+                  const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
 
-                    {/* DATA/HORA */}
-                    <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
-                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
-                        {row.dataHora}
-                      </p>
-                    </td>
+                  return (
+                    <tr key={row.id} style={{ height: "56px" }}>
+                      {/* GRUPO */}
+                      <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
+                        <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {row.nome}
+                        </p>
+                      </td>
 
-                    {/* GRUPO */}
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {row.grupo}
-                      </p>
-                    </td>
+                      {/* GESTOR */}
+                      <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                        <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {row.gestor ?? "—"}
+                        </p>
+                      </td>
 
-                    {/* GESTOR */}
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {row.gestorTrafego}
-                      </p>
-                    </td>
+                      {/* SATISFAÇÃO */}
+                      <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                        <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                          {satisfacao}
+                        </div>
+                      </td>
 
-                    {/* SQUAD */}
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <span style={{ fontSize: "12px", fontWeight: 500, color: "hsl(var(--primary))", background: "hsl(var(--primary)/0.1)", padding: "2px 8px", borderRadius: "4px" }}>
-                        {row.squad}
-                      </span>
-                    </td>
+                      {/* SCORE */}
+                      <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                        <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                          {score}
+                        </div>
+                      </td>
 
-                    {/* SATISFAÇÃO — full-height colored block */}
-                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
-                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
-                        {row.satisfacao}
-                      </div>
-                    </td>
+                      {/* STATUS */}
+                      <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          letterSpacing: "0.04em",
+                          color: "#111827",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {status}
+                        </span>
+                      </td>
 
-                    {/* SCORE — full-height colored block */}
-                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
-                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
-                        {row.score}
-                      </div>
-                    </td>
+                      {/* SLA */}
+                      <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                        <span style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          background: row.sla === "DENTRO DO SLA" ? "hsl(142 76% 90%)" : "hsl(0 84% 93%)",
+                          color: row.sla === "DENTRO DO SLA" ? "hsl(142 76% 30%)" : "hsl(0 84% 40%)",
+                        }}>
+                          {row.sla}
+                        </span>
+                      </td>
 
-                    {/* STATUS — plain black text */}
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        fontSize: "11px",
-                        fontWeight: 500,
-                        letterSpacing: "0.04em",
-                        color: "#111827",
-                        whiteSpace: "nowrap",
-                      }}>
-                        {row.status}
-                      </span>
-                    </td>
-
-                    {/* DESCRIÇÃO */}
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        "{row.descricao}"
-                      </p>
-                    </td>
-
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      {/* ÚLTIMA ATIVIDADE */}
+                      <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                        <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                          {row.ultima_atividade ?? "—"}
+                        </p>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        )}
 
         {/* Footer count */}
-        <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
-          {filtered.length} de {mockData.length} registros exibidos
-        </div>
+        {!isLoading && (
+          <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
+            {filtered.length} de {grupos.length} registros exibidos
+          </div>
+        )}
       </div>
     </div>
   );
