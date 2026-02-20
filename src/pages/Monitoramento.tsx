@@ -17,113 +17,61 @@ interface MonitoringRow {
 }
 
 const mockData: MonitoringRow[] = [
-  {
-    id: 1,
-    dataHora: "27/12/2026\n05:15",
-    grupo: "Dr. Silva Advocacia",
-    gestorTrafego: "Seu Madruga",
-    squad: "SQT1",
-    satisfacao: "Ótimo",
-    score: 98,
-    status: "RESOLVIDO",
-    descricao: "Cliente confirmou recebimento do parecer.",
-  },
-  {
-    id: 2,
-    dataHora: "27/12/2026\n05:30",
-    grupo: "Mendes & Associados",
-    gestorTrafego: "Karla",
-    squad: "SQT2",
-    satisfacao: "Regular",
-    score: 62,
-    status: "PENDENTE",
-    descricao: "Cliente pediu atualização dos honorários.",
-  },
-  {
-    id: 3,
-    dataHora: "27/12/2026\n05:45",
-    grupo: "Dra. Paula Oliveira",
-    gestorTrafego: "João Lima",
-    squad: "SQT3",
-    satisfacao: "Ruim",
-    score: 28,
-    status: "CRÍTICO",
-    descricao: "Cliente reclamou falta de posicionamento.",
-  },
-  {
-    id: 4,
-    dataHora: "27/12/2026\n06:00",
-    grupo: "Advogados SP",
-    gestorTrafego: "Karla",
-    squad: "SQT2",
-    satisfacao: "Regular",
-    score: 58,
-    status: "PENDENTE",
-    descricao: "Cliente analisando proposta.",
-  },
-  {
-    id: 5,
-    dataHora: "27/12/2026\n06:15",
-    grupo: "Santos Jurídica",
-    gestorTrafego: "João Lima",
-    squad: "SQT3",
-    satisfacao: "Ruim",
-    score: 22,
-    status: "CRÍTICO",
-    descricao: "4 mensagens sem retorno.",
-  },
-  {
-    id: 6,
-    dataHora: "27/12/2026\n06:30",
-    grupo: "Lima & Ferreira",
-    gestorTrafego: "Ana Costa",
-    squad: "SQT1",
-    satisfacao: "Ótimo",
-    score: 91,
-    status: "RESOLVIDO",
-    descricao: "Acordo firmado com sucesso.",
-  },
-  {
-    id: 7,
-    dataHora: "27/12/2026\n06:45",
-    grupo: "Carvalho Consultoria",
-    gestorTrafego: "Seu Madruga",
-    squad: "SQT2",
-    satisfacao: "Regular",
-    score: 55,
-    status: "PENDENTE",
-    descricao: "Aguardando documentação complementar.",
-  },
+  { id: 1, dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",    gestorTrafego: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: "Cliente confirmou recebimento do parecer." },
+  { id: 2, dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",    gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: "Cliente pediu atualização dos honorários." },
+  { id: 3, dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",    gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: "Cliente reclamou falta de posicionamento." },
+  { id: 4, dataHora: "27/12/2026\n06:00", grupo: "Advogados SP",           gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: "Cliente analisando proposta." },
+  { id: 5, dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",        gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: "4 mensagens sem retorno." },
+  { id: 6, dataHora: "27/12/2026\n06:30", grupo: "Lima & Ferreira",        gestorTrafego: "Ana Costa",   squad: "SQT1", satisfacao: "Ótimo",   score: 91, status: "RESOLVIDO", descricao: "Acordo firmado com sucesso." },
+  { id: 7, dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar." },
 ];
 
-const satisfacaoConfig: Record<Satisfacao, { bg: string; text: string }> = {
-  Ótimo: {
-    bg: "bg-[hsl(var(--status-otimo))]",
-    text: "text-white",
-  },
-  Regular: {
-    bg: "bg-[hsl(var(--status-regular))]",
-    text: "text-white",
-  },
-  Ruim: {
-    bg: "bg-[hsl(var(--status-ruim))]",
-    text: "text-white",
-  },
+const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
+  Ótimo:   { background: "#22c55e", color: "#ffffff" },
+  Regular: { background: "#facc15", color: "#000000" },
+  Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
 
-const statusConfig: Record<StatusType, { color: string; bg: string }> = {
-  RESOLVIDO: {
-    color: "text-[hsl(var(--status-otimo))]",
-    bg: "bg-[hsl(var(--status-otimo)/0.12)]",
-  },
-  PENDENTE: {
-    color: "text-[hsl(var(--status-regular))]",
-    bg: "bg-[hsl(var(--status-regular)/0.12)]",
-  },
-  CRÍTICO: {
-    color: "text-[hsl(var(--status-ruim))]",
-    bg: "bg-[hsl(var(--status-ruim)/0.12)]",
-  },
+const STATUS_STYLE: Record<StatusType, { background: string; color: string }> = {
+  RESOLVIDO: { background: "#22c55e", color: "#ffffff" },
+  PENDENTE:  { background: "#facc15", color: "#000000" },
+  CRÍTICO:   { background: "#ef4444", color: "#ffffff" },
+};
+
+const thStyle: React.CSSProperties = {
+  padding: "12px 12px",
+  textAlign: "left",
+  fontSize: "10px",
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "hsl(var(--muted-foreground))",
+  boxSizing: "border-box",
+  borderBottom: "1px solid hsl(var(--border))",
+  whiteSpace: "nowrap",
+};
+
+const tdBase: React.CSSProperties = {
+  padding: "0 12px",
+  verticalAlign: "middle",
+  height: "56px",
+  boxSizing: "border-box",
+};
+
+const tdColoredOuter: React.CSSProperties = {
+  padding: 0,
+  height: "56px",
+  boxSizing: "border-box",
+};
+
+const cellFill: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: "56px",
+  width: "100%",
+  fontWeight: 600,
+  fontSize: "13px",
 };
 
 export default function Monitoramento() {
@@ -149,12 +97,8 @@ export default function Monitoramento() {
           </h1>
         </div>
 
-        {/* Search */}
         <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar grupo..."
@@ -167,112 +111,121 @@ export default function Monitoramento() {
 
       {/* Table card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Data/Hora
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Grupo
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Gestor de Tráfego
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Squad
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Satisfação
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Score
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Descrição
-                </th>
+        <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: "90px" }} />
+            <col style={{ width: "18%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "60px" }} />
+            <col style={{ width: "130px" }} />
+            <col style={{ width: "80px" }} />
+            <col style={{ width: "120px" }} />
+            <col />
+          </colgroup>
+
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, paddingLeft: "20px" }}>DATA/HORA</th>
+              <th style={thStyle}>GRUPO</th>
+              <th style={thStyle}>GESTOR DE TRÁFEGO</th>
+              <th style={thStyle}>SQUAD</th>
+              <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
+              <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
+              <th style={thStyle}>STATUS</th>
+              <th style={thStyle}>DESCRIÇÃO</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                  Nenhum resultado encontrado.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-12 text-muted-foreground">
-                    Nenhum resultado encontrado.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((row, idx) => {
-                  const satConfig = satisfacaoConfig[row.satisfacao];
-                  const stConfig = statusConfig[row.status];
-                  return (
-                    <tr
-                      key={row.id}
-                      className={`border-b border-border transition-colors hover:bg-muted/30 ${
-                        idx % 2 === 0 ? "" : "bg-muted/10"
-                      }`}
-                    >
-                      {/* Data/Hora */}
-                      <td className="px-4 py-3 text-muted-foreground whitespace-pre-line leading-snug text-xs">
+            ) : (
+              filtered.map((row, idx) => {
+                const satStyle = SAT_STYLE[row.satisfacao];
+                const stsStyle = STATUS_STYLE[row.status];
+                const isLast = idx === filtered.length - 1;
+                const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
+
+                return (
+                  <tr key={row.id} style={{ height: "56px" }}>
+
+                    {/* DATA/HORA */}
+                    <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
                         {row.dataHora}
-                      </td>
+                      </p>
+                    </td>
 
-                      {/* Grupo */}
-                      <td className="px-4 py-3 font-semibold text-foreground">
+                    {/* GRUPO */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.grupo}
-                      </td>
+                      </p>
+                    </td>
 
-                      {/* Gestor */}
-                      <td className="px-4 py-3 text-muted-foreground">{row.gestorTrafego}</td>
+                    {/* GESTOR */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.gestorTrafego}
+                      </p>
+                    </td>
 
-                      {/* Squad */}
-                      <td className="px-4 py-3">
-                        <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">
-                          {row.squad}
-                        </span>
-                      </td>
+                    {/* SQUAD */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <span style={{ fontSize: "12px", fontWeight: 500, color: "hsl(var(--primary))", background: "hsl(var(--primary)/0.1)", padding: "2px 8px", borderRadius: "4px" }}>
+                        {row.squad}
+                      </span>
+                    </td>
 
-                      {/* Satisfação + Score (merged visual) */}
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-4 py-1 rounded font-semibold text-sm ${satConfig.bg} ${satConfig.text}`}
-                        >
-                          {row.satisfacao}
-                        </span>
-                      </td>
+                    {/* SATISFAÇÃO — full-height colored block */}
+                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                        {row.satisfacao}
+                      </div>
+                    </td>
 
-                      {/* Score */}
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center justify-center w-10 h-8 rounded font-bold text-sm ${satConfig.bg} ${satConfig.text}`}
-                        >
-                          {row.score}
-                        </span>
-                      </td>
+                    {/* SCORE — full-height colored block */}
+                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                        {row.score}
+                      </div>
+                    </td>
 
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-bold uppercase tracking-wide ${stConfig.bg} ${stConfig.color}`}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
+                    {/* STATUS — colored pill badge */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "3px 10px",
+                        borderRadius: "6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        background: stsStyle.background,
+                        color: stsStyle.color,
+                        whiteSpace: "nowrap",
+                      }}>
+                        {row.status}
+                      </span>
+                    </td>
 
-                      {/* Descrição */}
-                      <td className="px-4 py-3 text-muted-foreground italic max-w-xs">
+                    {/* DESCRIÇÃO */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         "{row.descricao}"
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </p>
+                    </td>
+
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
 
         {/* Footer count */}
         <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
