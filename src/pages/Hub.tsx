@@ -36,7 +36,7 @@ const scoreMedia  = Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.
 const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
 
 /* Shared column layout — SAT+SCORE merged into one grid cell */
-const COLS = "grid-cols-[90px_1.8fr_1.2fr_70px_1.8fr_100px_2fr]";
+const COLS = "grid-cols-[90px_1.8fr_1.2fr_70px_1.4fr_80px_100px_2fr]";
 
 export default function Hub() {
   const [search, setSearch] = useState("");
@@ -107,11 +107,8 @@ export default function Hub() {
             <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">GRUPO</span>
             <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">GESTOR DE TRÁFEGO</span>
             <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SQUAD</span>
-            {/* Merged SAT+SCORE header cell */}
-            <div className="flex">
-              <span className="flex-1 px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SATISFAÇÃO</span>
-              <span className="w-16 text-center py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SCORE</span>
-            </div>
+            <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">SATISFAÇÃO</span>
+            <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center">SCORE</span>
             <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">STATUS</span>
             <span className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">DESCRIÇÃO</span>
           </div>
@@ -142,14 +139,14 @@ export default function Hub() {
                   <p className="text-sm font-medium text-foreground">{row.squad}</p>
                 </div>
 
-                {/* SATISFAÇÃO + SCORE — single merged cell, one continuous background */}
-                <div className={`flex ${satBg}`}>
-                  <div className="flex-1 flex items-center justify-center py-4">
-                    <span className="text-sm font-bold text-white">{row.satisfacao}</span>
-                  </div>
-                  <div className="w-16 flex items-center justify-center py-4">
-                    <span className="text-sm font-bold text-white">{row.score}</span>
-                  </div>
+                {/* SATISFAÇÃO */}
+                <div className={`flex items-center justify-center py-4 ${satBg}`}>
+                  <span className="text-sm font-bold text-white">{row.satisfacao}</span>
+                </div>
+
+                {/* SCORE */}
+                <div className={`flex items-center justify-center py-4 ${satBg}`}>
+                  <span className="text-sm font-bold text-white">{row.score}</span>
                 </div>
 
                 {/* STATUS — plain text, no color */}
