@@ -1,42 +1,51 @@
 
-## Problem
-
-The SATISFAÇÃO and SCORE cells are currently merged into a single grid column using a flex wrapper. However, the header has them visually separated (SATISFAÇÃO and SCORE are distinct labels). This mismatch between the 7-column header grid and the actual content causes the color blocks to appear misaligned.
-
-Looking at the reference image:
-- SATISFAÇÃO has a wide colored cell (green/yellow/red) with centered text
-- SCORE has a narrower colored cell right next to it, same color, with the number centered
-- They are visually adjacent but each is its own distinct column
-
 ## Root Cause
 
-The current `COLS` constant defines 7 columns but the SATISFAÇÃO+SCORE are merged into one slot (`1.8fr`). The header row renders them as a flex row within that one cell, which works visually for the header but the colored data cells underneath don't perfectly stretch to match because they're still in a single grid column.
+The SATISFAÇÃO and SCORE colored cells use `py-4` padding, which means the background color only fills the inner area of the cell (not the full row height). The row height is determined by the other cells' `py-4` padding, but the colored cells need to stretch from the very top to the very bottom of the row — zero padding, full height.
 
-The real fix is to **split them into two proper grid columns** so both the header and the data rows use the exact same 8-column grid.
+The fix is a two-part approach:
 
-## Solution
+1. **Remove `py-4` from colored cells** — the padding creates white space above and below the color block.
+2. **Add `self-stretch` to the colored cell divs** — this makes each colored div stretch to 100% of the grid row height, ensuring the color fills completely from top to bottom.
 
-### 1. Update `COLS` to 8 columns
-Change from:
-```
-grid-cols-[90px_1.8fr_1.2fr_70px_1.8fr_100px_2fr]
-```
-To:
-```
-grid-cols-[90px_1.8fr_1.2fr_70px_1.4fr_80px_100px_2fr]
-```
-This gives SATISFAÇÃO its own `1.4fr` column and SCORE its own `80px` column.
+Additionally, the row wrapper (`<div className={grid ${COLS} ...}>`) needs `items-stretch` so the grid cells actually stretch to fill the row height.
 
-### 2. Update the header row
-Split the merged header flex-div into two separate `<span>` elements — one for SATISFAÇÃO and one for SCORE — each being a direct child of the grid.
+## What the Reference Image Shows
 
-### 3. Update each data row
-Split the single merged `<div className={`flex ${satBg}`}>` into two separate grid cells:
-- Cell 1 (SATISFAÇÃO): `<div className={`flex items-center justify-center py-4 ${satBg}`}>` with the text
-- Cell 2 (SCORE): `<div className={`flex items-center justify-center py-4 ${satBg}`}>` with the number
-
-Since both cells have the same background color class, they will appear as one continuous colored block visually, but each will be perfectly aligned with its corresponding header.
+- Each SATISFAÇÃO + SCORE cell pair forms one continuous colored band across the full height of the row.
+- No white gaps above or below the color.
+- Text is vertically centered within the full-height colored block.
+- The band goes from the top border to the bottom border of the row.
 
 ## Files to Change
 
-- `src/pages/Hub.tsx` — update `COLS`, header row, and data row rendering for the SATISFAÇÃO/SCORE columns
+**`src/pages/Hub.tsx`** — three targeted changes:
+
+### Change 1: Row wrapper — add `items-stretch`
+```
+// Before
+<div key={row.id} className={`grid ${COLS} border-b border-border last:border-0`}>
+
+// After
+<div key={row.id} className={`grid ${COLS} items-stretch border-b border-border last:border-0`}>
+```
+
+### Change 2: SATISFAÇÃO cell — remove `py-4`, keep `self-stretch`
+```
+// Before
+<div className={`flex items-center justify-center py-4 ${satBg}`}>
+
+// After
+<div className={`flex items-center justify-center self-stretch ${satBg}`}>
+```
+
+### Change 3: SCORE cell — same fix
+```
+// Before
+<div className={`flex items-center justify-center py-4 ${satBg}`}>
+
+// After
+<div className={`flex items-center justify-center self-stretch ${satBg}`}>
+```
+
+This ensures both colored cells fill the full row height with zero padding, while all other cells retain their `py-4` for proper text spacing and to define the row height.
