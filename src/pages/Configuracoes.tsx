@@ -81,6 +81,32 @@ export default function Configuracoes() {
   const [newCargo, setNewCargo]   = useState("Diretor");
   const [newSquad, setNewSquad]   = useState("SQT1");
 
+  /* Edição de Usuário */
+  type UserRow = typeof initialUsers[number];
+  const [editModal, setEditModal] = useState(false);
+  const [editUser, setEditUser]   = useState<UserRow | null>(null);
+  const [editName, setEditName]   = useState("");
+  const [editCargo, setEditCargo] = useState("Diretor");
+  const [editSquad, setEditSquad] = useState("SQT1");
+
+  const openEditModal = (user: UserRow) => {
+    setEditUser(user);
+    setEditName(user.name);
+    setEditCargo(user.cargo.charAt(0).toUpperCase() + user.cargo.slice(1).toLowerCase());
+    setEditSquad(user.squad);
+    setEditModal(true);
+  };
+  const handleSaveEdit = () => {
+    if (!editUser || !editName.trim()) return;
+    setUsers((prev) => prev.map((u) =>
+      u.id === editUser.id
+        ? { ...u, name: editName.trim(), cargo: editCargo.toUpperCase(), squad: editSquad }
+        : u
+    ));
+    setEditModal(false);
+    setEditUser(null);
+  };
+
   /* Squads */
   const [squads, setSquads]               = useState(initialSquads);
   const [squadModal, setSquadModal]       = useState(false);
@@ -212,7 +238,7 @@ export default function Configuracoes() {
                   <span className="text-sm font-medium text-foreground">{user.squad}</span>
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
-                    <button className="text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+                    <button onClick={() => openEditModal(user)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
                     <button onClick={() => setUsers((p) => p.filter((u) => u.id !== user.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
                   </div>
                 </div>
@@ -461,6 +487,52 @@ export default function Configuracoes() {
             </div>
             <div className="px-6 pb-6">
               <button onClick={handleCadastrarUser} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Cadastrar Colaborador</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal: Editar Usuário ══ */}
+      {editModal && editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h2 className="text-base font-bold uppercase tracking-wide text-foreground">Editar Colaborador</h2>
+              <button onClick={() => setEditModal(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Cargo</label>
+                <select
+                  value={editCargo}
+                  onChange={(e) => setEditCargo(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {CARGOS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Squad</label>
+                <select
+                  value={editSquad}
+                  onChange={(e) => setEditSquad(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="px-6 pb-6">
+              <button onClick={handleSaveEdit} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
