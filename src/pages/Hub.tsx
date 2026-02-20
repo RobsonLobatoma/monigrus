@@ -30,10 +30,10 @@ const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
 
-const STATUS_STYLE: Record<HubStatus, { background: string; color: string; border: string }> = {
-  RESOLVIDO: { background: "transparent", color: "#16A34A", border: "1px solid #E5E7EB" },
-  PENDENTE:  { background: "transparent", color: "#D97706", border: "1px solid #E5E7EB" },
-  CRÍTICO:   { background: "transparent", color: "#DC2626", border: "1px solid #E5E7EB" },
+const STATUS_STYLE: Record<HubStatus, { color: string }> = {
+  RESOLVIDO: { color: "#16A34A" },
+  PENDENTE:  { color: "#D97706" },
+  CRÍTICO:   { color: "#DC2626" },
 };
 
 const totalGrupos = GRUPOS.length;
@@ -220,19 +220,20 @@ export default function Hub() {
                       </div>
                     </td>
 
-                    {/* STATUS — colored pill badge */}
+                    {/* STATUS — neutral pill badge */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <span style={{
                         display: "inline-flex",
                         alignItems: "center",
-                        padding: "3px 10px",
-                        borderRadius: "6px",
+                        padding: "4px 10px",
+                        borderRadius: "999px",
                         fontSize: "11px",
-                        fontWeight: 700,
+                        fontWeight: 600,
                         letterSpacing: "0.04em",
-                        background: stsStyle.background,
+                        backgroundColor: "#ffffff",
+                        background: "none",
                         color: stsStyle.color,
-                        border: stsStyle.border,
+                        border: "1px solid #E5E7EB",
                         whiteSpace: "nowrap",
                       }}>
                         {row.status}
