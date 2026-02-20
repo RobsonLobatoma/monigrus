@@ -108,10 +108,44 @@ export default function Configuracoes() {
   };
 
   /* Squads */
-  const [squads, setSquads]               = useState(initialSquads);
-  const [squadModal, setSquadModal]       = useState(false);
-  const [newSquadName, setNewSquadName]   = useState("");
-  const [newSupervisor, setNewSupervisor] = useState("Carlos Eduardo");
+  type SquadRow = typeof initialSquads[number];
+  const [squads, setSquads]                     = useState(initialSquads);
+  const [squadModal, setSquadModal]             = useState(false);
+  const [newSquadName, setNewSquadName]         = useState("");
+  const [newSupervisor, setNewSupervisor]       = useState("Carlos Eduardo");
+
+  /* Edição de Squad */
+  const [editSquadModal, setEditSquadModal]     = useState(false);
+  const [editSquadData, setEditSquadData]       = useState<SquadRow | null>(null);
+  const [editSquadName, setEditSquadName]       = useState("");
+  const [editSquadSup, setEditSquadSup]         = useState("Carlos Eduardo");
+  const [editSquadGestores, setEditSquadGestores] = useState<string[]>([]);
+
+  const openEditSquadModal = (squad: SquadRow) => {
+    setEditSquadData(squad);
+    setEditSquadName(squad.name);
+    setEditSquadSup(squad.supervisor);
+    setEditSquadGestores([...squad.gestores]);
+    setEditSquadModal(true);
+  };
+  const toggleGestor = (g: string) => {
+    setEditSquadGestores((prev) =>
+      prev.includes(g.toUpperCase()) ? prev.filter((x) => x !== g.toUpperCase()) : [...prev, g.toUpperCase()]
+    );
+  };
+  const handleSaveSquad = () => {
+    if (!editSquadData || !editSquadName.trim()) return;
+    setSquads((prev) => prev.map((s) =>
+      s.id === editSquadData.id
+        ? { ...s, name: editSquadName.trim().toUpperCase(), supervisor: editSquadSup, supervisorInitial: editSquadSup.charAt(0).toUpperCase(), gestores: editSquadGestores }
+        : s
+    ));
+    setEditSquadModal(false);
+    setEditSquadData(null);
+  };
+  const handleRemoveSquad = (id: number) => {
+    setSquads((prev) => prev.filter((s) => s.id !== id));
+  };
 
   /* Grupos */
   const [grupos, setGrupos]               = useState<Grupo[]>(initialGrupos);
@@ -263,7 +297,10 @@ export default function Configuracoes() {
                 <div key={squad.id} className="rounded-xl border border-border bg-card p-5 space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><Target size={22} className="text-primary" /></div>
-                    <button className="text-muted-foreground hover:text-foreground"><MoreVertical size={16} /></button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditSquadModal(squad)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"><Pencil size={14} /></button>
+                      <button onClick={() => handleRemoveSquad(squad.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
+                    </div>
                   </div>
                   <p className="text-xl font-bold text-foreground">{squad.name}</p>
                   <div className="rounded-lg border border-dashed border-border p-3">
@@ -533,6 +570,59 @@ export default function Configuracoes() {
             </div>
             <div className="px-6 pb-6">
               <button onClick={handleSaveEdit} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal: Editar Squad ══ */}
+      {editSquadModal && editSquadData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h2 className="text-base font-bold uppercase tracking-wide text-foreground">Editar Squad</h2>
+              <button onClick={() => setEditSquadModal(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome do Squad</label>
+                <input
+                  type="text"
+                  value={editSquadName}
+                  onChange={(e) => setEditSquadName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Supervisor Responsável</label>
+                <select
+                  value={editSquadSup}
+                  onChange={(e) => setEditSquadSup(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {SUPERVISOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Gestores Vinculados</label>
+                <div className="flex flex-wrap gap-2">
+                  {GESTORES_OPTIONS.map((g) => {
+                    const active = editSquadGestores.includes(g.toUpperCase());
+                    return (
+                      <button
+                        key={g}
+                        onClick={() => toggleGestor(g)}
+                        className={`text-[11px] font-semibold px-3 py-1.5 rounded-md border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground bg-muted/40 hover:border-primary/50"}`}
+                      >
+                        {g}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="px-6 pb-6">
+              <button onClick={handleSaveSquad} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
