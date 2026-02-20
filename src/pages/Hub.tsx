@@ -30,10 +30,10 @@ const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
 
-const STATUS_STYLE: Record<HubStatus, { background: string; color: string }> = {
-  RESOLVIDO: { background: "#22c55e", color: "#ffffff" },
-  PENDENTE:  { background: "#facc15", color: "#000000" },
-  CRÍTICO:   { background: "#ef4444", color: "#ffffff" },
+const STATUS_STYLE: Record<HubStatus, { background: string; color: string; border: string }> = {
+  RESOLVIDO: { background: "transparent", color: "#16A34A", border: "1px solid #E5E7EB" },
+  PENDENTE:  { background: "transparent", color: "#D97706", border: "1px solid #E5E7EB" },
+  CRÍTICO:   { background: "transparent", color: "#DC2626", border: "1px solid #E5E7EB" },
 };
 
 const totalGrupos = GRUPOS.length;
@@ -232,6 +232,7 @@ export default function Hub() {
                         letterSpacing: "0.04em",
                         background: stsStyle.background,
                         color: stsStyle.color,
+                        border: stsStyle.border,
                         whiteSpace: "nowrap",
                       }}>
                         {row.status}
