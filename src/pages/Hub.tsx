@@ -135,13 +135,13 @@ export default function Hub() {
                   <p className="text-sm font-medium text-foreground">{row.squad}</p>
                 </div>
 
-                {/* SATISFAÇÃO — full cell color */}
-                <div className={`flex items-center justify-center px-3 py-4 ${satBg}`}>
+                {/* SATISFAÇÃO — full cell color, no padding so bg fills entire row height */}
+                <div className={`flex items-center justify-center ${satBg}`}>
                   <span className="text-sm font-bold text-white">{row.satisfacao}</span>
                 </div>
 
                 {/* SCORE — full cell color (same as satisfação) */}
-                <div className={`flex items-center justify-center px-3 py-4 ${satBg}`}>
+                <div className={`flex items-center justify-center ${satBg}`}>
                   <span className="text-sm font-bold text-white">{row.score}</span>
                 </div>
 
