@@ -24,25 +24,17 @@ const GRUPOS: GrupoRow[] = [
   { id: 5, dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",      gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: '"4 mensagens sem retorno."' },
 ];
 
-const SAT_STYLE: Record<Satisfacao, { bg: string; text: string }> = {
-  Ótimo:   { bg: "bg-green-500",  text: "text-white" },
-  Regular: { bg: "bg-yellow-400", text: "text-white" },
-  Ruim:    { bg: "bg-red-500",    text: "text-white" },
+/* Full-cell background colors for Satisfação + Score */
+const SAT_BG: Record<Satisfacao, string> = {
+  Ótimo:   "bg-green-500",
+  Regular: "bg-yellow-400",
+  Ruim:    "bg-red-500",
 };
 
-const STATUS_STYLE: Record<HubStatus, string> = {
-  RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400",
-  PENDENTE:  "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-500",
-  CRÍTICO:   "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400",
-};
-
-const scoreColor = (s: number) =>
-  s >= 80 ? "bg-green-500 text-white" : s >= 50 ? "bg-yellow-400 text-white" : "bg-red-500 text-white";
-
-const totalGrupos  = GRUPOS.length;
-const criticos     = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
-const scoreMedia   = Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length);
-const resolvidos   = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
+const totalGrupos = GRUPOS.length;
+const criticos    = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
+const scoreMedia  = Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length);
+const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
 
 export default function Hub() {
   const [search, setSearch] = useState("");
@@ -70,10 +62,10 @@ export default function Hub() {
       {/* ── Metric cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "MEUS GRUPOS",   value: totalGrupos,            sub: "grupos monitorados",    icon: <Users size={18} className="text-primary" />,         accent: "bg-primary/10" },
-          { label: "CRÍTICOS",      value: criticos,               sub: "requerem atenção",      icon: <AlertTriangle size={18} className="text-red-500" />,  accent: "bg-red-500/10" },
-          { label: "SCORE MÉDIO",   value: `${scoreMedia}`,        sub: "pontuação da carteira", icon: <TrendingUp size={18} className="text-green-500" />,   accent: "bg-green-500/10" },
-          { label: "RESOLVIDOS",    value: resolvidos,             sub: "neste ciclo",           icon: <Shield size={18} className="text-blue-500" />,        accent: "bg-blue-500/10" },
+          { label: "MEUS GRUPOS",  value: totalGrupos, sub: "grupos monitorados",    icon: <Users size={18} className="text-primary" />,        accent: "bg-primary/10" },
+          { label: "CRÍTICOS",     value: criticos,    sub: "requerem atenção",      icon: <AlertTriangle size={18} className="text-red-500" />, accent: "bg-red-500/10" },
+          { label: "SCORE MÉDIO",  value: `${scoreMedia}`, sub: "pontuação da carteira", icon: <TrendingUp size={18} className="text-green-500" />, accent: "bg-green-500/10" },
+          { label: "RESOLVIDOS",   value: resolvidos,  sub: "neste ciclo",           icon: <Shield size={18} className="text-blue-500" />,      accent: "bg-blue-500/10" },
         ].map((card) => (
           <div key={card.label} className="rounded-xl border border-border bg-card px-5 py-4 space-y-3">
             <div className={`w-9 h-9 rounded-lg ${card.accent} flex items-center justify-center`}>
@@ -109,7 +101,7 @@ export default function Hub() {
 
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           {/* Table header */}
-          <div className="grid grid-cols-[1fr_1.8fr_1.2fr_0.7fr_1.1fr_0.7fr_1fr_2fr] px-6 py-3 border-b border-border">
+          <div className="grid grid-cols-[1fr_1.8fr_1.2fr_0.7fr_1.1fr_0.6fr_0.9fr_2fr] px-6 py-3 border-b border-border">
             {["DATA/HORA", "GRUPO", "GESTOR DE TRÁFEGO", "SQUAD", "SATISFAÇÃO", "SCORE", "STATUS", "DESCRIÇÃO"].map((h) => (
               <span key={h} className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{h}</span>
             ))}
@@ -117,49 +109,51 @@ export default function Hub() {
 
           {/* Rows */}
           {filtered.map((row) => {
-            const sat   = SAT_STYLE[row.satisfacao];
-            const stCls = STATUS_STYLE[row.status];
-            const scCls = scoreColor(row.score);
+            const satBg = SAT_BG[row.satisfacao];
             return (
               <div
                 key={row.id}
-                className="grid grid-cols-[1fr_1.8fr_1.2fr_0.7fr_1.1fr_0.7fr_1fr_2fr] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                className="grid grid-cols-[1fr_1.8fr_1.2fr_0.7fr_1.1fr_0.6fr_0.9fr_2fr] items-stretch border-b border-border last:border-0 hover:bg-muted/10 transition-colors"
               >
-                {/* Data/Hora */}
-                <p className="text-xs text-muted-foreground whitespace-pre-line leading-snug">{row.dataHora}</p>
-
-                {/* Grupo */}
-                <p className="text-sm font-semibold text-foreground">{row.grupo}</p>
-
-                {/* Gestor */}
-                <p className="text-sm text-muted-foreground">{row.gestor}</p>
-
-                {/* Squad */}
-                <p className="text-sm font-medium text-foreground">{row.squad}</p>
-
-                {/* Satisfação */}
-                <div>
-                  <span className={`inline-flex items-center justify-center px-3 py-1 rounded text-sm font-bold ${sat.bg} ${sat.text} min-w-[72px]`}>
-                    {row.satisfacao}
-                  </span>
+                {/* DATA/HORA */}
+                <div className="flex items-center px-6 py-4">
+                  <p className="text-xs text-muted-foreground whitespace-pre-line leading-snug">{row.dataHora}</p>
                 </div>
 
-                {/* Score */}
-                <div>
-                  <span className={`inline-flex items-center justify-center w-10 h-8 rounded text-sm font-bold ${scCls}`}>
-                    {row.score}
-                  </span>
+                {/* GRUPO */}
+                <div className="flex items-center px-3 py-4">
+                  <p className="text-sm font-semibold text-foreground">{row.grupo}</p>
                 </div>
 
-                {/* Status */}
-                <div>
-                  <span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${stCls}`}>
-                    {row.status}
-                  </span>
+                {/* GESTOR */}
+                <div className="flex items-center px-3 py-4">
+                  <p className="text-sm text-muted-foreground">{row.gestor}</p>
                 </div>
 
-                {/* Descrição */}
-                <p className="text-xs text-muted-foreground italic truncate">{row.descricao}</p>
+                {/* SQUAD */}
+                <div className="flex items-center px-3 py-4">
+                  <p className="text-sm font-medium text-foreground">{row.squad}</p>
+                </div>
+
+                {/* SATISFAÇÃO — full cell color */}
+                <div className={`flex items-center justify-center px-3 py-4 ${satBg}`}>
+                  <span className="text-sm font-bold text-white">{row.satisfacao}</span>
+                </div>
+
+                {/* SCORE — full cell color (same as satisfação) */}
+                <div className={`flex items-center justify-center px-3 py-4 ${satBg}`}>
+                  <span className="text-sm font-bold text-white">{row.score}</span>
+                </div>
+
+                {/* STATUS — plain text, no color */}
+                <div className="flex items-center px-3 py-4">
+                  <span className="text-sm font-semibold text-foreground">{row.status}</span>
+                </div>
+
+                {/* DESCRIÇÃO */}
+                <div className="flex items-center px-3 py-4">
+                  <p className="text-xs text-muted-foreground italic truncate">{row.descricao}</p>
+                </div>
               </div>
             );
           })}
