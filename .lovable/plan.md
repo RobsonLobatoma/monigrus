@@ -1,48 +1,23 @@
 
-## Escopo da Alteração
+## Diagnóstico Real
 
-Exclusivamente visual, restrita à coluna **STATUS** em dois arquivos:
-- `src/pages/Hub.tsx` — Painel de Monitoramento (PESSOAL)
-- `src/pages/Monitoramento.tsx` — Painel de Monitoramento (GLOBAL)
+O código já tem `background: "transparent"` no `STATUS_STYLE`, então o problema **não é o `STATUS_STYLE`**. O problema é que o `<span>` do badge com `background: "transparent"` herda a cor do elemento pai (`<td>` → `<tr>` → `<tbody>` → `bg-card`). Dependendo do tema (claro/escuro), isso pode aparecer como uma tonalidade suave ao invés de branco puro visível.
 
-Nenhuma outra coluna, lógica, dado ou estilo será tocado.
+A solução definitiva é usar **`backgroundColor: "#ffffff"`** (branco puro explícito) no `<span>` do STATUS, combinado com os outros ajustes visuais solicitados:
+- `borderRadius: "999px"` (pill, em vez de `6px`)
+- `padding: "4px 10px"`
+- `fontWeight: 600`
+- `border: "1px solid #E5E7EB"`
 
----
+## Arquivos Afetados
 
-## O que Muda
+Apenas **dois arquivos**, apenas a célula STATUS:
+- `src/pages/Hub.tsx` — linha 225–239
+- `src/pages/Monitoramento.tsx` — linha 200–214
 
-### Situação Atual
-O badge STATUS usa o objeto `STATUS_STYLE` com fundo colorido sólido:
-```tsx
-background: stsStyle.background,  // Ex: "#22c55e", "#facc15", "#ef4444"
-color: stsStyle.color,             // Ex: "#ffffff", "#000000"
-```
+## Mudanças Exatas
 
-### Situação Após
-O badge STATUS passará a ter:
-- Fundo: transparente (`transparent`)
-- Borda: sutil cinza clara (`1px solid #E5E7EB`)
-- Texto colorido conforme o estado (sem fundo):
-  - RESOLVIDO → `#16A34A` (verde)
-  - PENDENTE → `#D97706` (amarelo/laranja)
-  - CRÍTICO → `#DC2626` (vermelho)
-
----
-
-## Mudanças Técnicas
-
-### Arquivo 1: `src/pages/Hub.tsx`
-
-**Alterar `STATUS_STYLE`** (linhas 33–37) para usar `background: transparent` e as novas cores de texto:
-```tsx
-const STATUS_STYLE: Record<HubStatus, { background: string; color: string; border: string }> = {
-  RESOLVIDO: { background: "transparent", color: "#16A34A", border: "1px solid #E5E7EB" },
-  PENDENTE:  { background: "transparent", color: "#D97706", border: "1px solid #E5E7EB" },
-  CRÍTICO:   { background: "transparent", color: "#DC2626", border: "1px solid #E5E7EB" },
-};
-```
-
-**Alterar o `<span>` do STATUS** (linhas 225–238) para incluir `border` e remover `background` sólido:
+### Em ambos os arquivos — o `<span>` do STATUS passa de:
 ```tsx
 <span style={{
   display: "inline-flex",
@@ -52,24 +27,44 @@ const STATUS_STYLE: Record<HubStatus, { background: string; color: string; borde
   fontSize: "11px",
   fontWeight: 700,
   letterSpacing: "0.04em",
-  background: stsStyle.background,   // agora "transparent"
-  color: stsStyle.color,             // agora cor do texto apenas
-  border: stsStyle.border,           // nova borda cinza sutil
+  background: stsStyle.background,   // "transparent" — herdava cor do pai
+  color: stsStyle.color,
+  border: stsStyle.border,
   whiteSpace: "nowrap",
 }}>
 ```
 
-### Arquivo 2: `src/pages/Monitoramento.tsx`
+### Para:
+```tsx
+<span style={{
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "4px 10px",
+  borderRadius: "999px",
+  fontSize: "11px",
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  backgroundColor: "#ffffff",        // branco puro explícito, sem herança
+  background: "none",                // cancela qualquer background shorthand
+  color: stsStyle.color,
+  border: "1px solid #E5E7EB",       // borda cinza sutil fixa, sem depender do objeto
+  whiteSpace: "nowrap",
+}}>
+```
 
-Exatamente o mesmo padrão — alterar `STATUS_STYLE` (linhas 35–39) e o `<span>` do STATUS (linhas 200–213).
-
----
+### O `STATUS_STYLE` também é simplificado para remover o campo `background` (não é mais necessário):
+```tsx
+const STATUS_STYLE: Record<HubStatus, { color: string }> = {
+  RESOLVIDO: { color: "#16A34A" },
+  PENDENTE:  { color: "#D97706" },
+  CRÍTICO:   { color: "#DC2626" },
+};
+```
 
 ## Garantias
 
-- SATISFAÇÃO e SCORE: inalterados (blocos coloridos full-height)
-- DATA/HORA, GRUPO, GESTOR, SQUAD, DESCRIÇÃO: inalterados
-- Altura das linhas (56px), larguras das colunas, bordas de separação: inalteradas
-- Lógica de filtro/busca: inalterada
-- Footer com contagem de registros: inalterado
-- Nenhuma funcionalidade, dado ou comportamento é afetado
+- SATISFAÇÃO e SCORE: completamente intactos (blocos coloridos full-height)
+- Todas as outras colunas: sem alteração
+- Lógica de filtro/busca: sem alteração
+- Layout, altura das linhas (56px), larguras de colunas: sem alteração
+- Aplicado em Hub.tsx (PESSOAL) e Monitoramento.tsx (GLOBAL)
