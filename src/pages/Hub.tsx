@@ -117,7 +117,7 @@ export default function Hub() {
           {filtered.map((row) => {
             const satBg = SAT_BG[row.satisfacao];
             return (
-              <div key={row.id} className={`grid ${COLS} border-b border-border last:border-0`}>
+              <div key={row.id} className={`grid ${COLS} items-stretch border-b border-border last:border-0`}>
 
                 {/* DATA/HORA */}
                 <div className="flex items-center px-5 py-4">
@@ -140,12 +140,12 @@ export default function Hub() {
                 </div>
 
                 {/* SATISFAÇÃO */}
-                <div className={`flex items-center justify-center py-4 ${satBg}`}>
+                <div className={`flex items-center justify-center self-stretch ${satBg}`}>
                   <span className="text-sm font-bold text-white">{row.satisfacao}</span>
                 </div>
 
                 {/* SCORE */}
-                <div className={`flex items-center justify-center py-4 ${satBg}`}>
+                <div className={`flex items-center justify-center self-stretch ${satBg}`}>
                   <span className="text-sm font-bold text-white">{row.score}</span>
                 </div>
 
