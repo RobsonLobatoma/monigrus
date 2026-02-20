@@ -2,7 +2,8 @@ import { useState } from "react";
 import {
   Settings, Globe, Users, LayoutGrid, Hash, Shield, Save, History,
   Search, UserPlus, Pencil, Trash2, X, Target, Plus, MoreVertical,
-  Clock, MessageSquare, Filter, Save as SaveIcon,
+  Clock, MessageSquare, Filter, Save as SaveIcon, AlertTriangle,
+  Monitor, Link2, CheckCircle2, Circle,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ const initialUsers = [
   { id: 4, name: "Seu Madruga",    email: "madruga@sistema.com", cargo: "GESTOR DE TRÁFEGO", squad: "SQT1"   },
 ];
 
-/* ─── Gestão de Squads ─── */
+/* ─── Squads ─── */
 const SUPERVISOR_OPTIONS = ["Carlos Eduardo", "Karla Mendes", "João Lima", "Ana Maria"];
 const GESTORES_OPTIONS   = ["Seu Madruga", "Patrícia", "Karla", "Roberto", "João Lima", "André"];
 const initialSquads = [
@@ -36,22 +37,10 @@ const AVATAR_COLORS: Record<string, string> = {
   A: "bg-purple-500", D: "bg-red-500",  S: "bg-teal-500",
 };
 
-/* ─── Gestão de Grupos ─── */
+/* ─── Grupos ─── */
 type GrupoStatus = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 type GrupoSLA    = "DENTRO DO SLA" | "FORA DO SLA";
-
-interface Grupo {
-  id: number;
-  nome: string;
-  uuid: string;
-  squad: string;
-  gestor: string;
-  sla: GrupoSLA;
-  status: GrupoStatus;
-  mensagens: number;
-  ultimaAtividade: string;
-}
-
+interface Grupo { id: number; nome: string; uuid: string; squad: string; gestor: string; sla: GrupoSLA; status: GrupoStatus; mensagens: number; ultimaAtividade: string; }
 const initialGrupos: Grupo[] = [
   { id: 1, nome: "Dr. Silva Advocacia",  uuid: "UUID: 1", squad: "SQT1", gestor: "Seu Madruga", sla: "DENTRO DO SLA", status: "RESOLVIDO", mensagens: 25,  ultimaAtividade: "27/12/2026 05:15" },
   { id: 2, nome: "Mendes & Associados",  uuid: "UUID: 2", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 83,  ultimaAtividade: "27/12/2026 09:39" },
@@ -59,19 +48,32 @@ const initialGrupos: Grupo[] = [
   { id: 4, nome: "Advogados SP",         uuid: "UUID: 4", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 300, ultimaAtividade: "27/12/2026 06:08" },
   { id: 5, nome: "Santos Jurídica",      uuid: "UUID: 5", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 143, ultimaAtividade: "27/12/2026 06:15" },
 ];
+const SLA_STYLE: Record<GrupoSLA, string>    = { "DENTRO DO SLA": "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", "FORA DO SLA": "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
+const STATUS_STYLE: Record<GrupoStatus, string> = { RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", PENDENTE: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400", CRÍTICO: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
 
-const SLA_STYLE: Record<GrupoSLA, string> = {
-  "DENTRO DO SLA": "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400",
-  "FORA DO SLA":   "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400",
-};
-const STATUS_STYLE: Record<GrupoStatus, string> = {
-  RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400",
-  PENDENTE:  "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400",
-  CRÍTICO:   "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400",
-};
+/* ─── Hierarquia & Permissões ─── */
+type Cargo = "DIRETOR" | "GERENTE" | "SUPERVISOR" | "GESTOR DE TRÁFEGO";
+
+const HIERARCHY = [
+  { initial: "D", label: "DIRETOR",           desc: "Visão Estratégica & Gestão Global",   avatarClass: "bg-purple-500" },
+  { initial: "G", label: "GERENTE",           desc: "Operações & Táticas Regionais",        avatarClass: "bg-blue-500"   },
+  { initial: "S", label: "SUPERVISOR",        desc: "Gestão de Squads & SLAs",              avatarClass: "bg-teal-500"   },
+  { initial: "G", label: "GESTOR DE TRÁFEGO", desc: "Operação Direta em Grupos",            avatarClass: "bg-green-500"  },
+];
+
+const SIMULATOR_CARGOS: Cargo[] = ["DIRETOR", "GERENTE", "SUPERVISOR", "GESTOR DE TRÁFEGO"];
+
+// permission matrix: [Diretor, Gerente, Supervisor, Gestor de Tráfego]
+const ACCESS_MATRIX: { label: string; icon: JSX.Element; perms: [boolean, boolean, boolean, boolean] }[] = [
+  { label: "Monitoramento",    icon: <Monitor size={15} className="text-muted-foreground" />,  perms: [true,  true,  true,  false] },
+  { label: "Hub do Colaborador", icon: <Users size={15} className="text-muted-foreground" />,  perms: [true,  false, true,  true]  },
+  { label: "Anomalias",        icon: <AlertTriangle size={15} className="text-muted-foreground" />, perms: [true,  true,  false, false] },
+  { label: "Conexões",         icon: <Link2 size={15} className="text-muted-foreground" />,   perms: [true,  true,  false, false] },
+  { label: "Configurações",    icon: <Settings size={15} className="text-muted-foreground" />, perms: [true,  true,  true,  true]  },
+];
 
 export default function Configuracoes() {
-  /* ── Usuários state ── */
+  /* Usuários */
   const [users, setUsers]         = useState(initialUsers);
   const [search, setSearch]       = useState("");
   const [userModal, setUserModal] = useState(false);
@@ -79,27 +81,29 @@ export default function Configuracoes() {
   const [newCargo, setNewCargo]   = useState("Diretor");
   const [newSquad, setNewSquad]   = useState("SQT1");
 
-  /* ── Squads state ── */
+  /* Squads */
   const [squads, setSquads]               = useState(initialSquads);
   const [squadModal, setSquadModal]       = useState(false);
   const [newSquadName, setNewSquadName]   = useState("");
   const [newSupervisor, setNewSupervisor] = useState("Carlos Eduardo");
 
-  /* ── Grupos state ── */
-  const [grupos, setGrupos]             = useState<Grupo[]>(initialGrupos);
-  const [grupoSearch, setGrupoSearch]   = useState("");
-  const [slaFilter, setSlaFilter]       = useState<"todos" | GrupoSLA>("todos");
-  const [grupoModal, setGrupoModal]     = useState(false);
-  const [slaTime, setSlaTime]           = useState("09:30");
-  const [newGrupoNome, setNewGrupoNome] = useState("");
-  const [newGrupoSquad, setNewGrupoSquad]   = useState("SQT1");
+  /* Grupos */
+  const [grupos, setGrupos]               = useState<Grupo[]>(initialGrupos);
+  const [grupoSearch, setGrupoSearch]     = useState("");
+  const [slaFilter, setSlaFilter]         = useState<"todos" | GrupoSLA>("todos");
+  const [grupoModal, setGrupoModal]       = useState(false);
+  const [slaTime, setSlaTime]             = useState("09:30");
+  const [newGrupoNome, setNewGrupoNome]   = useState("");
+  const [newGrupoSquad, setNewGrupoSquad] = useState("SQT1");
   const [newGrupoGestor, setNewGrupoGestor] = useState("Seu Madruga");
 
-  /* ── Handlers ── */
+  /* Hierarquia & Permissões */
+  const [simCargo, setSimCargo] = useState<Cargo>("DIRETOR");
+
+  /* Handlers */
   const filteredUsers = users.filter(
     (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
   );
-
   const filteredGrupos = grupos.filter((g) => {
     const matchSearch = g.nome.toLowerCase().includes(grupoSearch.toLowerCase());
     const matchSla    = slaFilter === "todos" || g.sla === slaFilter;
@@ -111,27 +115,23 @@ export default function Configuracoes() {
     setUsers((prev) => [...prev, { id: Date.now(), name: newName.trim(), email: `${newName.trim().toLowerCase().replace(/\s+/g, ".")}@sistema.com`, cargo: newCargo.toUpperCase(), squad: newSquad }]);
     setNewName(""); setNewCargo("Diretor"); setNewSquad("SQT1"); setUserModal(false);
   };
-
   const handleAtivarSquad = () => {
     if (!newSquadName.trim()) return;
     const sup = newSupervisor;
     setSquads((prev) => [...prev, { id: Date.now(), name: newSquadName.trim().toUpperCase(), supervisor: sup, supervisorInitial: sup.charAt(0).toUpperCase(), gestores: [] }]);
     setNewSquadName(""); setNewSupervisor("Carlos Eduardo"); setSquadModal(false);
   };
-
   const handleIniciarMonitoramento = () => {
     if (!newGrupoNome.trim()) return;
-    setGrupos((prev) => [...prev, {
-      id: Date.now(), nome: newGrupoNome.trim(), uuid: `UUID: ${prev.length + 1}`,
-      squad: newGrupoSquad, gestor: newGrupoGestor,
-      sla: "DENTRO DO SLA", status: "PENDENTE", mensagens: 0, ultimaAtividade: "—",
-    }]);
+    setGrupos((prev) => [...prev, { id: Date.now(), nome: newGrupoNome.trim(), uuid: `UUID: ${prev.length + 1}`, squad: newGrupoSquad, gestor: newGrupoGestor, sla: "DENTRO DO SLA", status: "PENDENTE", mensagens: 0, ultimaAtividade: "—" }]);
     setNewGrupoNome(""); setNewGrupoSquad("SQT1"); setNewGrupoGestor("Seu Madruga"); setGrupoModal(false);
   };
 
+  const cargoIndex: Record<Cargo, number> = { "DIRETOR": 0, "GERENTE": 1, "SUPERVISOR": 2, "GESTOR DE TRÁFEGO": 3 };
+
   return (
     <div className="space-y-6">
-      {/* ── Page Header ── */}
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
           <Settings className="w-7 h-7 text-primary" />
@@ -145,7 +145,7 @@ export default function Configuracoes() {
         </Button>
       </div>
 
-      {/* ── Tabs ── */}
+      {/* Tabs */}
       <Tabs defaultValue="visao-geral" className="w-full">
         <TabsList className="bg-transparent border-b border-border rounded-none h-auto p-0 w-full justify-start gap-0">
           {[
@@ -195,7 +195,7 @@ export default function Configuracoes() {
           </div>
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] px-6 py-3 border-b border-border">
-              {["COLABORADOR", "CARGO", "SQUAD", "STATUS", "AÇÕES"].map((h) => (
+              {["COLABORADOR","CARGO","SQUAD","STATUS","AÇÕES"].map((h) => (
                 <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
               ))}
             </div>
@@ -212,8 +212,8 @@ export default function Configuracoes() {
                   <span className="text-sm font-medium text-foreground">{user.squad}</span>
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
-                    <button className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                    <button onClick={() => setUsers((p) => p.filter((u) => u.id !== user.id))} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                    <button className="text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+                    <button onClick={() => setUsers((p) => p.filter((u) => u.id !== user.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
                   </div>
                 </div>
               );
@@ -243,7 +243,7 @@ export default function Configuracoes() {
                   <div className="rounded-lg border border-dashed border-border p-3">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Supervisor Resp.</p>
                     <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center flex-shrink-0`}><span className="text-xs font-bold text-white">{squad.supervisorInitial}</span></div>
+                      <div className={`w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center`}><span className="text-xs font-bold text-white">{squad.supervisorInitial}</span></div>
                       <span className="text-sm font-semibold text-foreground">{squad.supervisor}</span>
                     </div>
                   </div>
@@ -263,11 +263,8 @@ export default function Configuracoes() {
 
         {/* ════ Gestão de Grupos ════ */}
         <TabsContent value="gestao-grupos" className="mt-6 space-y-5">
-          {/* SLA Config banner */}
           <div className="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-4">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-              <Clock size={20} className="text-primary" />
-            </div>
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"><Clock size={20} className="text-primary" /></div>
             <div className="flex-1">
               <p className="text-sm font-bold text-foreground">CONFIGURAÇÃO DE SLA</p>
               <p className="text-xs text-muted-foreground mt-0.5">Este horário define o limite de resposta para os grupos.</p>
@@ -276,85 +273,44 @@ export default function Configuracoes() {
               <div className="text-right">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Horário Limite de Resposta</p>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="time"
-                    value={slaTime}
-                    onChange={(e) => setSlaTime(e.target.value)}
-                    className="px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                  <button className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-primary transition-colors">
-                    <SaveIcon size={14} />
-                  </button>
+                  <input type="time" value={slaTime} onChange={(e) => setSlaTime(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border border-border bg-background text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                  <button className="w-8 h-8 rounded-lg border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"><SaveIcon size={14} /></button>
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Toolbar */}
           <div className="flex items-center gap-3">
             <div className="relative flex-1 max-w-xs">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar por nome do grupo..."
-                value={grupoSearch}
-                onChange={(e) => setGrupoSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
+              <input type="text" placeholder="Buscar por nome do grupo..." value={grupoSearch} onChange={(e) => setGrupoSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
             </div>
-            <button
-              onClick={() => setSlaFilter(slaFilter === "todos" ? "FORA DO SLA" : "todos")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-colors ${slaFilter !== "todos" ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground hover:text-foreground"}`}
-            >
-              <Filter size={14} />
-              {slaFilter === "todos" ? "Todos os SLAs" : "Fora do SLA"}
+            <button onClick={() => setSlaFilter(slaFilter === "todos" ? "FORA DO SLA" : "todos")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-colors ${slaFilter !== "todos" ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground hover:text-foreground"}`}>
+              <Filter size={14} />{slaFilter === "todos" ? "Todos os SLAs" : "Fora do SLA"}
             </button>
-            <button
-              onClick={() => setGrupoModal(true)}
-              className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
-            >
+            <button onClick={() => setGrupoModal(true)} className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
               <Plus size={16} />Criar Grupo
             </button>
           </div>
-
-          {/* Table */}
           <div className="rounded-xl border border-border bg-card overflow-hidden">
             <div className="grid grid-cols-[2fr_1.5fr_1.2fr_1.2fr_1fr_1.4fr_90px] px-6 py-3 border-b border-border">
-              {["NOME DO GRUPO", "SQUAD / GESTOR", "SLA", "STATUS", "MENSAGENS", "ÚLTIMA ATIVIDADE", "AÇÕES"].map((h) => (
+              {["NOME DO GRUPO","SQUAD / GESTOR","SLA","STATUS","MENSAGENS","ÚLTIMA ATIVIDADE","AÇÕES"].map((h) => (
                 <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
               ))}
             </div>
             {filteredGrupos.map((g) => (
               <div key={g.id} className="grid grid-cols-[2fr_1.5fr_1.2fr_1.2fr_1fr_1.4fr_90px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                {/* Nome */}
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{g.nome}</p>
-                  <p className="text-xs text-muted-foreground">{g.uuid}</p>
-                </div>
-                {/* Squad / Gestor */}
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{g.squad}</p>
-                  <p className="text-xs text-muted-foreground">{g.gestor}</p>
-                </div>
-                {/* SLA */}
-                <div>
-                  <span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${SLA_STYLE[g.sla]}`}>{g.sla}</span>
-                </div>
-                {/* Status */}
-                <div>
-                  <span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${STATUS_STYLE[g.status]}`}>{g.status}</span>
-                </div>
-                {/* Mensagens */}
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <MessageSquare size={14} />
-                  <span className="font-semibold text-foreground">{g.mensagens}</span>
-                </div>
-                {/* Última atividade */}
+                <div><p className="text-sm font-semibold text-foreground">{g.nome}</p><p className="text-xs text-muted-foreground">{g.uuid}</p></div>
+                <div><p className="text-sm font-semibold text-foreground">{g.squad}</p><p className="text-xs text-muted-foreground">{g.gestor}</p></div>
+                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${SLA_STYLE[g.sla]}`}>{g.sla}</span></div>
+                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${STATUS_STYLE[g.status]}`}>{g.status}</span></div>
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground"><MessageSquare size={14} /><span className="font-semibold text-foreground">{g.mensagens}</span></div>
                 <p className="text-xs text-muted-foreground whitespace-pre-line">{g.ultimaAtividade.replace(" ", "\n")}</p>
-                {/* Ações */}
                 <div className="flex items-center gap-3">
-                  <button className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                  <button className="text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
                 </div>
               </div>
             ))}
@@ -363,7 +319,115 @@ export default function Configuracoes() {
         </TabsContent>
 
         {/* ════ Hierarquia & Permissões ════ */}
-        <TabsContent value="hierarquia-permissoes" className="mt-6"><div /></TabsContent>
+        <TabsContent value="hierarquia-permissoes" className="mt-6 space-y-8">
+
+          {/* Fluxo Hierárquico */}
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-center mb-5">
+              Fluxo Hierárquico do Sistema
+            </p>
+            <div className="flex flex-col items-center gap-0">
+              {HIERARCHY.map((h, i) => (
+                <div key={h.label} className="flex flex-col items-center w-full max-w-md">
+                  <div className="w-full rounded-xl border border-border bg-card px-5 py-3.5 flex items-center gap-4">
+                    <div className={`w-9 h-9 rounded-lg ${h.avatarClass} flex items-center justify-center flex-shrink-0`}>
+                      <span className="text-sm font-bold text-white">{h.initial}</span>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-foreground">{h.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{h.desc}</p>
+                    </div>
+                  </div>
+                  {i < HIERARCHY.length - 1 && (
+                    <div className="flex flex-col items-center py-1">
+                      <div className="w-px h-3 bg-border" />
+                      <Plus size={12} className="text-muted-foreground" />
+                      <div className="w-px h-3 bg-border" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Simulador de Cargo */}
+          <div className="rounded-2xl p-6 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)" }}>
+            {/* Ghost shield */}
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-10">
+              <Shield size={120} className="text-white" />
+            </div>
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield size={18} className="text-primary" />
+                <h3 className="text-base font-bold uppercase tracking-wide text-white">Simulador de Cargo</h3>
+              </div>
+              <p className="text-sm text-slate-300 mb-5 max-w-lg leading-relaxed">
+                <span className="text-yellow-400 font-bold">⚠ MODO SIMULAÇÃO:</span>{" "}
+                Selecione o cargo abaixo para alternar IMEDIATAMENTE a visibilidade de abas e listas de grupos em toda esta página.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SIMULATOR_CARGOS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setSimCargo(c)}
+                    className={`px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${
+                      simCargo === c
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
+                        : "bg-white/10 text-slate-300 hover:bg-white/20"
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Matriz de Acessos */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-widest text-foreground">Matriz de Acessos</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Defina quais módulos cada cargo pode acessar por padrão.</p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-500 uppercase tracking-wide">
+                <AlertTriangle size={13} />
+                Somente diretores podem editar a matriz
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {/* Table header */}
+              <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] px-6 py-3 border-b border-border">
+                {["MÓDULO", "DIRETOR", "GERENTE", "SUPERVISOR", "GESTOR DE TRÁFEGO"].map((h) => (
+                  <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
+                ))}
+              </div>
+
+              {/* Rows */}
+              {ACCESS_MATRIX.map((row) => (
+                <div key={row.label} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    {row.icon}
+                    <span className="text-sm font-medium text-foreground">{row.label}</span>
+                  </div>
+                  {row.perms.map((allowed, ci) => {
+                    const isSimActive = cargoIndex[simCargo] === ci;
+                    return (
+                      <div key={ci} className={`flex items-center transition-all ${isSimActive ? "scale-110" : ""}`}>
+                        {allowed ? (
+                          <CheckCircle2 size={22} className="text-green-500" />
+                        ) : (
+                          <Circle size={22} className="text-muted-foreground/30" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
       {/* ══ Modal: Criar Usuário ══ */}
