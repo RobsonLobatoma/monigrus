@@ -12,6 +12,7 @@ export interface UserProfileWithRole {
   created_at: string;
   updated_at: string;
   last_access_at: string | null;
+  funcao: string;
   role: string;
 }
 
