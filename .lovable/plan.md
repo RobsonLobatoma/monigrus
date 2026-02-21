@@ -1,78 +1,156 @@
 
 
-## Plano: Promover usuario a DIRETOR + Conectar Configuracoes ao Supabase
+## Sistema Enterprise RBAC - Plano de Implementacao
 
-### O que sera feito
+### Resumo
 
-1. **Atualizar o cargo de `rowaizemarketing@gmail.com` para DIRETOR** no banco de dados (tabela `user_roles`)
-2. **Criar 3 hooks React Query** para buscar dados reais do Supabase
-3. **Conectar a pagina Configuracoes** ao banco de dados, mantendo os dados mockados como fallback
-4. **Conectar Hub e Monitoramento** aos dados reais de grupos
-
-### Usuarios existentes no banco
-
-| Nome | Email | Cargo Atual |
-|---|---|---|
-| Rowaize Marketing Digital | rowaizemarketing@gmail.com | OPERACIONAL -> **DIRETOR** |
-| robsonlobato31 | robsonlobato31@gmail.com | OPERACIONAL |
-| Robson Lobato | rowaizemkt@gmail.com | DIRETOR |
-
-As tabelas `teams` e `grupos` estao vazias no banco. Os dados mockados serao mantidos como fallback visual ate que dados reais sejam inseridos.
+Implementar controle de acesso baseado em cargos (RBAC) no frontend e backend, com novas tabelas para permissoes granulares e historico de squads, um hook central `useCurrentUserRole` para determinar o cargo do usuario logado, e filtragem de visibilidade em todas as telas -- sem alterar nenhum layout, menu ou funcionalidade existente.
 
 ---
 
-### Etapa 1 — Atualizar cargo no banco
+### Etapa 1 -- Novas tabelas no banco de dados (migracao)
 
-Executar UPDATE na tabela `user_roles` para alterar o role de `rowaizemarketing@gmail.com` (user_id: `10c6d7c8-3fb5-4474-9442-2960e178bb0d`) de `OPERACIONAL` para `DIRETOR`.
+Criar 3 novas tabelas sem alterar nenhuma tabela existente:
 
-### Etapa 2 — Criar hooks compartilhados
-
-Criar 3 arquivos com hooks React Query que buscam dados do Supabase e invalidam cache apos mutacoes:
-
-| Arquivo | Funcionalidade |
+| Tabela | Descricao |
 |---|---|
-| `src/hooks/useUserProfiles.ts` | Lista `user_profiles` + `user_roles` com join; mutations para update e delete |
-| `src/hooks/useTeams.ts` | Lista `teams` ativas; mutations para create, update e delete (soft delete) |
-| `src/hooks/useGrupos.ts` | Lista `grupos` ativos; mutations para create, update e delete (soft delete) |
+| `permissions` | Lista de codigos de permissao (ex: `CREATE_USER`, `EDIT_SQUAD`, `VIEW_DASHBOARD_GLOBAL`) |
+| `role_permissions` | Mapeamento entre `app_role` e permissoes |
+| `user_squad_history` | Historico de movimentacao de usuarios entre squads |
 
-### Etapa 3 — Atualizar Configuracoes.tsx
+```text
+permissions:
+  id (uuid PK), code (text UNIQUE), description (text), module (text), created_at
 
-- Importar os 3 hooks
-- Substituir `useState(initialUsers)` por dados de `useUserProfiles()` — manter `initialUsers` como fallback se array vazio
-- Substituir `useState(initialSquads)` por dados de `useTeams()` — manter `initialSquads` como fallback
-- Substituir `useState(initialGrupos)` por dados de `useGrupos()` — manter `initialGrupos` como fallback
-- Todos os handlers de criar/editar/deletar chamam as mutations dos hooks
-- Adicionar indicador de carregamento (loading state)
-- **Nenhuma alteracao de layout, menu ou funcionalidade existente**
+role_permissions:
+  id (uuid PK), role (app_role), permission_id (uuid FK -> permissions.id), created_at
+  UNIQUE(role, permission_id)
 
-### Etapa 4 — Atualizar Hub.tsx e Monitoramento.tsx
+user_squad_history:
+  id (uuid PK), user_id (uuid), old_team_id (uuid NULL), new_team_id (uuid NULL),
+  changed_by (uuid), reason (text), created_at
+```
 
-- Importar `useGrupos()` para substituir arrays estaticos `GRUPOS` e `mockData`
-- Manter dados mockados como fallback quando o banco estiver vazio
-- Calcular metricas dinamicamente dos dados reais
-- **Nenhuma alteracao visual**
+RLS: leitura para autenticados, escrita para `can_manage_users()`.
+
+Seed inicial com as permissoes da matriz de acesso:
+
+| Codigo | Diretor | Gerente | Supervisor | Operacional |
+|---|---|---|---|---|
+| CREATE_USER | sim | sim | nao | nao |
+| EDIT_USER | sim | sim | squad | nao |
+| CREATE_SQUAD | sim | sim | nao | nao |
+| EDIT_SQUAD | sim | sim | proprio | nao |
+| MANAGE_PERMISSIONS | sim | nao | nao | nao |
+| VIEW_DASHBOARD_GLOBAL | sim | sim | nao | nao |
+| VIEW_DASHBOARD_SQUAD | sim | sim | sim | nao |
+| EXECUTE_TASKS | nao | nao | gestao | sim |
+| VIEW_MONITORAMENTO | sim | sim | sim | nao |
+| VIEW_HUB | sim | nao | sim | sim |
+| VIEW_ANOMALIAS | sim | sim | nao | nao |
+| VIEW_CONEXOES | sim | sim | nao | nao |
+| VIEW_CONFIGURACOES | sim | sim | sim | sim |
+
+### Etapa 2 -- Hook useCurrentUserRole
+
+Criar `src/hooks/useCurrentUserRole.ts`:
+- Busca o cargo do usuario logado via `user_roles` + `useAuth()`
+- Retorna `{ role, level, loading, canManage, hasPermission }`
+- `level`: DIRETOR=1, GERENTE=2, SUPERVISOR=3, OPERACIONAL=4
+- `canManage(targetLevel)`: verifica se pode gerenciar cargo abaixo
+- `hasPermission(code)`: consulta `role_permissions` via cache
+
+### Etapa 3 -- Hook usePermissions
+
+Criar `src/hooks/usePermissions.ts`:
+- `usePermissions()`: busca todas as permissoes + role_permissions
+- `useCheckPermission(code)`: retorna boolean para o usuario atual
+- Usa React Query com cache para evitar re-fetches
+
+### Etapa 4 -- Hook useSquadHistory
+
+Criar `src/hooks/useSquadHistory.ts`:
+- `useSquadHistory(userId?)`: busca historico de movimentacao
+- `useLogSquadChange()`: mutation para registrar mudanca de squad
+
+### Etapa 5 -- Configuracoes.tsx (modificacao sem alterar layout)
+
+Alteracoes internas, mantendo todos os elementos visuais identicos:
+
+**Usuarios & Cargos:**
+- Dropdown de "Cargo" no modal de criacao: filtrar opcoes para mostrar apenas cargos abaixo do nivel do usuario logado
+- Validacao: `if (cargoNovoLevel <= cargoAtualLevel) BLOQUEAR`
+- Botoes de editar/excluir: ocultos se usuario nao tem permissao
+
+**Gestao de Squads:**
+- Supervisor: filtrar dados por squad se o usuario logado for SUPERVISOR
+- Botao "Novo Squad": visivel apenas para DIRETOR e GERENTE
+- Botoes editar/excluir: SUPERVISOR so edita o proprio squad
+
+**Gestao de Grupos:**
+- SUPERVISOR ve apenas grupos do seu squad
+- OPERACIONAL ve apenas grupos aos quais esta vinculado
+
+**Hierarquia & Permissoes:**
+- Matriz de Acessos: checkboxes editaveis apenas para DIRETOR (atualmente ja readonly para outros)
+- GERENTE: nao ve permissoes do DIRETOR
+
+**Visao Geral:**
+- Cards de metricas: contagem dinamica baseada nos dados visiveis ao cargo do usuario
+
+### Etapa 6 -- AppSidebar.tsx (modificacao sem alterar layout)
+
+- Importar `useCurrentUserRole`
+- Filtrar `navItems` baseado nas permissoes do usuario:
+  - OPERACIONAL: nao ve Anomalias, Conexoes, Monitoramento (global)
+  - SUPERVISOR: nao ve Anomalias, Conexoes
+  - GERENTE: nao ve Hub
+  - DIRETOR: ve tudo
+- Itens de menu mantidos no array original, apenas filtrados via `.filter()`
+
+### Etapa 7 -- Monitoramento.tsx (modificacao sem alterar layout)
+
+- Importar `useCurrentUserRole`
+- SUPERVISOR: filtrar `data` para mostrar apenas grupos do seu squad (via `team_id`)
+- OPERACIONAL: redirecionar para `/` (nao tem acesso)
+- DIRETOR/GERENTE: sem alteracao (ve tudo)
+
+### Etapa 8 -- Hub.tsx (modificacao sem alterar layout)
+
+- Importar `useCurrentUserRole`
+- GERENTE: redirecionar para `/`
+- SUPERVISOR: filtrar por squad
+- Greeting dinamico: usar nome real do usuario logado em vez de "Dr. Ricardo"
 
 ---
-
-### Detalhes tecnicos
-
-Os hooks usam `useQuery` com chaves `["user-profiles"]`, `["teams"]`, `["grupos"]`. Apos qualquer mutacao (create/update/delete), o cache e invalidado via `queryClient.invalidateQueries()`, forçando re-fetch automatico em todas as paginas que consomem o mesmo hook.
-
-O RLS do Supabase exige usuario autenticado. Com o cargo DIRETOR, o usuario `rowaizemarketing@gmail.com` tera acesso total de leitura e escrita via `can_manage_users()`.
 
 ### Arquivos a criar
 
-- `src/hooks/useUserProfiles.ts`
-- `src/hooks/useTeams.ts`
-- `src/hooks/useGrupos.ts`
+| Arquivo | Descricao |
+|---|---|
+| `src/hooks/useCurrentUserRole.ts` | Hook central de cargo e permissoes do usuario logado |
+| `src/hooks/usePermissions.ts` | Hook para consulta de permissoes granulares |
+| `src/hooks/useSquadHistory.ts` | Hook para historico de movimentacao de squads |
 
 ### Arquivos a modificar
 
-- `src/pages/Configuracoes.tsx`
-- `src/pages/Hub.tsx`
-- `src/pages/Monitoramento.tsx`
+| Arquivo | O que muda |
+|---|---|
+| `src/pages/Configuracoes.tsx` | Validacao de cargo na criacao, filtragem por permissao, registro de historico |
+| `src/pages/Hub.tsx` | Filtragem por cargo, greeting dinamico |
+| `src/pages/Monitoramento.tsx` | Filtragem por squad para supervisor |
+| `src/components/AppSidebar.tsx` | Filtragem de itens de menu por permissao |
 
-### Dados a atualizar no banco
+### Migracao de banco de dados
 
-- `user_roles` — UPDATE role para `DIRETOR` onde user_id = `10c6d7c8-3fb5-4474-9442-2960e178bb0d`
+Uma unica migracao SQL criando as 3 novas tabelas + seed de permissoes + RLS policies.
+
+### Garantias
+
+- Zero alteracao em tabelas existentes (`user_roles`, `teams`, `grupos`, `user_profiles`)
+- Zero alteracao de layout visual
+- Zero remocao de funcionalidades ou menus
+- Toda logica nova e aditiva e desacoplada
+- Fallback para dados mockados mantido
+- Backward-compatible: se o hook de role nao carregar, comportamento padrao e mantido
 
