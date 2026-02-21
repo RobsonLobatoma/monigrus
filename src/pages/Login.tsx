@@ -56,7 +56,11 @@ export default function Login() {
 
       if (isPreviewDomain && data?.url) {
         const oauthUrl = new URL(data.url);
-        if (oauthUrl.hostname !== "accounts.google.com") {
+        const allowedHosts = [
+          "accounts.google.com",
+          "nmmbjptgrvsjqeytmxmw.supabase.co",
+        ];
+        if (!allowedHosts.some((host) => oauthUrl.hostname === host)) {
           throw new Error("URL de autenticação inválida");
         }
         window.location.href = data.url;
