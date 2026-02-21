@@ -1,114 +1,70 @@
 
-## Sistema de Login MONIGRU — Integrado ao Supabase Auth + RBAC
 
-### Visão geral
+## Correção do erro `redirect_uri_mismatch` no Google OAuth
 
-O sistema de login será integrado ao Supabase Auth existente, respeitando as políticas RLS e a hierarquia de cargos já configuradas (`DIRETOR`, `GERENTE`, `SUPERVISOR`, `OPERACIONAL`). A tela seguirá o design da imagem de referência: logo, card centralizado, campos email/senha, link de recuperação de senha e link para criar conta.
+### Diagnóstico
 
----
+O erro **400: redirect_uri_mismatch** significa que a URL de callback usada pelo Supabase para o Google OAuth nao esta cadastrada no Google Cloud Console. Isso e puramente um problema de configuracao nos paineis do Google e do Supabase -- nao e um bug no codigo.
 
-### Como o fluxo vai funcionar
+### O que precisa ser feito
 
-```text
-Usuário acessa qualquer rota
-         ↓
-  AuthContext verifica sessão Supabase
-         ↓
-  Não autenticado → redireciona para /login
-  Autenticado     → carrega app normalmente
-         ↓
-  Após login: busca user_profiles + user_roles
-  do usuário logado (nome, cargo, equipe)
-         ↓
-  Topbar exibe nome real e cargo real do BD
-  Sidebar "Sair" chama supabase.auth.signOut()
-```
+Este problema exige **3 acoes**, sendo 2 manuais (nos paineis) e 1 no codigo:
 
 ---
 
-### Arquivos a criar
+### Acao 1 — Configurar o Google Cloud Console (manual)
 
-**1. `src/contexts/AuthContext.tsx`** — Contexto global de autenticação
-- Escuta `onAuthStateChange` do Supabase
-- Expõe `session`, `user`, `profile` (do `user_profiles`), `role` (do `user_roles`), e `signOut()`
-- Busca automaticamente o perfil e cargo após login
+Acesse: [Google Cloud Console - Credentials](https://console.cloud.google.com/apis/credentials)
 
-**2. `src/pages/Login.tsx`** — Tela de login (design baseado na imagem)
-- Logo MONIGRU com inicial "M" em fundo azul (cor `primary` do projeto)
-- Título "MONIGRU" + subtítulo "Sistema de Monitoramento de Grupos"
-- Card centralizado com:
-  - Campo Email com label
-  - Campo Senha com toggle de visibilidade (olho)
-  - Link "Esqueceu sua senha?" → vai para `/recuperar-senha`
-  - Botão "Entrar" (full width, cor primária)
-  - Divisor "OU CONTINUE COM" + botão Google (opcional, configurável)
-  - Link "Não tem uma conta? Criar conta" → vai para `/cadastro`
-- Fundo com cor `muted` suave (cinza claro, ou `bg-muted`)
+1. Selecione o projeto correto
+2. Clique no **OAuth Client ID** que voce criou
+3. Em **"Authorized redirect URIs"** (URIs de redirecionamento autorizados), adicione:
+   - `https://nmmbjptgrvsjqeytmxmw.supabase.co/auth/v1/callback`
+4. Em **"Authorized JavaScript origins"** (Origens JavaScript autorizadas), adicione:
+   - `https://id-preview--ac65ab5f-71c9-463c-8db1-4dfc99f55ca1.lovable.app`
+   - (e qualquer dominio customizado que voce use)
+5. Salve as alteracoes
 
-**3. `src/pages/Cadastro.tsx`** — Tela de criação de conta
-- Formulário: nome completo, email, senha, confirmação de senha
-- Cria conta via `supabase.auth.signUp()`
-- Após cadastro, redireciona para `/login` com mensagem de confirmação
-
-**4. `src/pages/RecuperarSenha.tsx`** — Recuperação de senha
-- Campo email
-- Chama `supabase.auth.resetPasswordForEmail()`
-- Mostra confirmação de envio
-
-**5. `src/pages/RedefinirSenha.tsx`** — Redefinição de senha (rota `/redefinir-senha`)
-- Detecta `type=recovery` na URL
-- Formulário nova senha + confirmação
-- Chama `supabase.auth.updateUser({ password })`
-
-**6. `src/components/ProtectedRoute.tsx`** — Guarda de rota
-- Redireciona para `/login` se não autenticado
-- Mostra spinner enquanto verifica sessão
+A URL de callback do Supabase segue sempre o formato:
+`https://<PROJECT_ID>.supabase.co/auth/v1/callback`
 
 ---
 
-### Arquivos a modificar
+### Acao 2 — Configurar o Supabase Dashboard (manual)
 
-**7. `src/App.tsx`**
-- Envolve tudo no `AuthProvider`
-- Rotas públicas: `/login`, `/cadastro`, `/recuperar-senha`, `/redefinir-senha`
-- Rotas protegidas: todas as outras, envolvidas por `<ProtectedRoute>`
-- Layout `AppLayout` apenas nas rotas protegidas
+Acesse: [Supabase Auth - URL Configuration](https://supabase.com/dashboard/project/nmmbjptgrvsjqeytmxmw/auth/url-configuration)
 
-**8. `src/components/AppLayout.tsx`**
-- Topbar: substituir "Dr. Ricardo / Diretor" hardcoded pelo nome e cargo real do `AuthContext`
-- Inicial do avatar gerada a partir do nome real
+1. **Site URL**: defina como a URL principal do seu app (ex: `https://id-preview--ac65ab5f-71c9-463c-8db1-4dfc99f55ca1.lovable.app`)
+2. **Redirect URLs**: adicione:
+   - `https://id-preview--ac65ab5f-71c9-463c-8db1-4dfc99f55ca1.lovable.app`
+   - `https://id-preview--ac65ab5f-71c9-463c-8db1-4dfc99f55ca1.lovable.app/**`
 
-**9. `src/components/AppSidebar.tsx`**
-- Botão "Sair" chama `signOut()` do `AuthContext`
-- Filtra itens de navegação conforme o cargo do usuário logado (baseado em `ACCESS_MATRIX` já existente em Configurações)
+Tambem confirme que o provedor Google esta ativo em:
+[Supabase Auth - Providers](https://supabase.com/dashboard/project/nmmbjptgrvsjqeytmxmw/auth/providers)
+
+Com o **Client ID** e **Client Secret** do Google preenchidos.
 
 ---
 
-### Segurança e integração com RLS
+### Acao 3 — Melhoria no codigo (Login.tsx)
 
-- As RLS policies já existentes (`user_profiles_read_self`, `user_roles_read_self`, `grupos_select_role_scoped`, etc.) passarão a funcionar assim que o usuário estiver autenticado
-- O token JWT do Supabase é enviado automaticamente em todas as queries pelo cliente existente
-- `can_manage_users()` no banco retorna `true` para DIRETOR e GERENTE → eles podem editar em Configurações
-- Não há dados sensíveis armazenados no `localStorage` além da sessão gerenciada pelo Supabase
+Pequena melhoria no `handleGoogleLogin` para lidar com ambientes de preview do Lovable (que usam iframes e podem bloquear cookies de terceiros):
 
----
+**Arquivo**: `src/pages/Login.tsx`
 
-### Tabela de arquivos
-
-| Arquivo | Ação |
-|---|---|
-| `src/contexts/AuthContext.tsx` | Criar — contexto global de auth |
-| `src/pages/Login.tsx` | Criar — tela de login |
-| `src/pages/Cadastro.tsx` | Criar — tela de cadastro |
-| `src/pages/RecuperarSenha.tsx` | Criar — recuperar senha |
-| `src/pages/RedefinirSenha.tsx` | Criar — redefinir senha |
-| `src/components/ProtectedRoute.tsx` | Criar — guarda de rotas |
-| `src/App.tsx` | Modificar — rotas públicas/protegidas + AuthProvider |
-| `src/components/AppLayout.tsx` | Modificar — topbar com dados reais do usuário |
-| `src/components/AppSidebar.tsx` | Modificar — signOut funcional + filtro de menu por cargo |
+- Usar `skipBrowserRedirect: true` quando em dominio customizado ou preview
+- Validar a URL do OAuth antes de redirecionar
+- Manter o fluxo padrao para dominios Lovable
 
 ---
 
-### Nota sobre Google OAuth
+### Resumo
 
-O botão "Continuar com Google" será incluído na tela de login, mas exigirá configuração manual no painel do Supabase (Authentication → Providers → Google). Será exibida uma instrução clara na interface caso o provedor não esteja ativo.
+| Acao | Onde | O que fazer |
+|---|---|---|
+| 1 | Google Cloud Console | Adicionar `https://nmmbjptgrvsjqeytmxmw.supabase.co/auth/v1/callback` como Redirect URI |
+| 2 | Supabase Dashboard | Configurar Site URL e Redirect URLs com o dominio do app |
+| 3 | Codigo (`Login.tsx`) | Melhorar `handleGoogleLogin` para ambientes de preview |
+
+Apos as configuracoes manuais estarem corretas, o login com Google funcionara normalmente.
+
