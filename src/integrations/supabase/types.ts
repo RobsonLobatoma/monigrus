@@ -919,6 +919,7 @@ export type Database = {
           created_at: string
           email: string
           full_name: string
+          funcao: string
           is_active: boolean
           last_access_at: string | null
           sector_id: string | null
@@ -930,6 +931,7 @@ export type Database = {
           created_at?: string
           email: string
           full_name: string
+          funcao?: string
           is_active?: boolean
           last_access_at?: string | null
           sector_id?: string | null
@@ -941,6 +943,7 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string
+          funcao?: string
           is_active?: boolean
           last_access_at?: string | null
           sector_id?: string | null

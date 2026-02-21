@@ -126,10 +126,11 @@ export default function Configuracoes() {
         name: u.full_name,
         email: u.email,
         cargo: u.role,
+        funcao: u.funcao ?? "",
         squad: "—",
       }));
     }
-    return initialUsers;
+    return initialUsers.map(u => ({ ...u, funcao: "" }));
   }, [dbUsers]);
 
   const squads = useMemo(() => {
@@ -168,6 +169,7 @@ export default function Configuracoes() {
   const [newName, setNewName]     = useState("");
   const [newCargo, setNewCargo]   = useState("Diretor");
   const [newSquad, setNewSquad]   = useState("SQT1");
+  const [newFuncao, setNewFuncao] = useState("");
 
   /* Edição de Usuário */
   type UserRow = typeof users[number];
@@ -176,6 +178,7 @@ export default function Configuracoes() {
   const [editName, setEditName]   = useState("");
   const [editCargo, setEditCargo] = useState("Diretor");
   const [editSquad, setEditSquad] = useState("SQT1");
+  const [editFuncao, setEditFuncao] = useState("");
 
   const openEditModal = (user: UserRow) => {
     setEditUser(user);
@@ -183,6 +186,7 @@ export default function Configuracoes() {
     const cargoLabel = CARGOS.find(c => c.toUpperCase() === user.cargo.toUpperCase()) ?? "Diretor";
     setEditCargo(cargoLabel);
     setEditSquad(user.squad);
+    setEditFuncao(user.funcao ?? "");
     setEditModal(true);
   };
   const handleSaveEdit = () => {
@@ -192,7 +196,7 @@ export default function Configuracoes() {
       const newRole = CARGO_MAP[editCargo] ?? editCargo.toUpperCase();
       updateUserMutation.mutate({
         user_id: editUser.id,
-        profile: { full_name: editName.trim() },
+        profile: { full_name: editName.trim(), funcao: editFuncao.trim() },
         role: newRole,
       });
     }
@@ -301,9 +305,7 @@ export default function Configuracoes() {
 
   const handleCadastrarUser = () => {
     if (!newName.trim()) return;
-    // Users are created via Supabase Auth registration (trigger handle_new_user)
-    // This modal is kept for UI consistency
-    setNewName(""); setNewCargo("Diretor"); setNewSquad("SQT1"); setUserModal(false);
+    setNewName(""); setNewCargo("Diretor"); setNewSquad("SQT1"); setNewFuncao(""); setUserModal(false);
   };
   const handleAtivarSquad = () => {
     if (!newSquadName.trim()) return;
@@ -416,8 +418,8 @@ export default function Configuracoes() {
             </button>
           </div>
           <div className="rounded-xl border border-border bg-card overflow-hidden">
-            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] px-6 py-3 border-b border-border">
-              {["COLABORADOR","CARGO","SQUAD","STATUS","AÇÕES"].map((h) => (
+            <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] px-6 py-3 border-b border-border">
+              {["COLABORADOR","CARGO","FUNÇÃO","SQUAD","STATUS","AÇÕES"].map((h) => (
                 <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
               ))}
             </div>
@@ -425,12 +427,13 @@ export default function Configuracoes() {
               const initial = user.name.charAt(0).toUpperCase();
               const cargoClass = CARGO_COLORS[user.cargo] ?? "text-muted-foreground bg-muted";
               return (
-                <div key={user.id} className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                <div key={user.id} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0"><span className="text-sm font-bold text-primary">{initial}</span></div>
                     <div><p className="text-sm font-semibold text-foreground">{user.name}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
                   </div>
                   <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${cargoClass}`}>{user.cargo}</span></div>
+                  <span className="text-sm text-muted-foreground">{user.funcao || "—"}</span>
                   <span className="text-sm font-medium text-foreground">{user.squad}</span>
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
@@ -669,6 +672,11 @@ export default function Configuracoes() {
                 <input type="text" placeholder="Ex: Roberto Silva" value={newName} onChange={(e) => setNewName(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
               </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Função</label>
+                <input type="text" placeholder="Ex: Analista de Dados" value={newFuncao} onChange={(e) => setNewFuncao(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Cargo Hierárquico</label>
@@ -718,6 +726,16 @@ export default function Configuracoes() {
                 >
                   {(allowedCargos.length > 0 ? allowedCargos : CARGOS).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Função</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Analista de Dados"
+                  value={editFuncao}
+                  onChange={(e) => setEditFuncao(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Squad</label>
