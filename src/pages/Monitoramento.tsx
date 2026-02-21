@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { Shield, Search } from "lucide-react";
 import { useGrupos } from "@/hooks/useGrupos";
-
+import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
+import { Navigate } from "react-router-dom";
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type StatusType = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 
@@ -77,7 +78,13 @@ function mapStatusToSatisfacao(status: string): Satisfacao {
 
 export default function Monitoramento() {
   const { data: dbGrupos } = useGrupos();
+  const { role, teamId: currentTeamId, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
+
+  // OPERACIONAL não acessa Monitoramento
+  if (!roleLoading && role === "OPERACIONAL") {
+    return <Navigate to="/" replace />;
+  }
 
   const data = useMemo((): MonitoringRow[] => {
     if (dbGrupos && dbGrupos.length > 0) {

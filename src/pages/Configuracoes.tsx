@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useUserProfiles, useUpdateUserProfile, useDeleteUserProfile } from "@/hooks/useUserProfiles";
 import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from "@/hooks/useTeams";
 import { useGrupos, useCreateGrupo, useUpdateGrupo, useDeleteGrupo } from "@/hooks/useGrupos";
+import { useCurrentUserRole, type AppRole } from "@/hooks/useCurrentUserRole";
 
 /* ─── Usuários & Cargos ─── */
 const CARGO_COLORS: Record<string, string> = {
@@ -25,6 +26,9 @@ const CARGO_MAP: Record<string, string> = {
   "Gerente": "GERENTE",
   "Supervisor": "SUPERVISOR",
   "Operacional": "OPERACIONAL",
+};
+const ROLE_LEVEL: Record<string, number> = {
+  DIRETOR: 1, GERENTE: 2, SUPERVISOR: 3, OPERACIONAL: 4,
 };
 const SQUAD_OPTIONS = ["MASTER", "ELITE", "SQT1", "SQT2", "SQT3"];
 const initialUsers = [
@@ -83,6 +87,9 @@ const ACCESS_MATRIX: { label: string; icon: JSX.Element; perms: [boolean, boolea
 ];
 
 export default function Configuracoes() {
+  /* ─── RBAC hook ─── */
+  const { role: currentRole, level: currentLevel, hasPermission, teamId: currentTeamId, loading: roleLoading } = useCurrentUserRole();
+
   /* ─── Supabase hooks ─── */
   const { data: dbUsers, isLoading: loadingUsers } = useUserProfiles();
   const { data: dbTeams, isLoading: loadingTeams } = useTeams();
@@ -96,6 +103,20 @@ export default function Configuracoes() {
   const createGrupoMutation = useCreateGrupo();
   const updateGrupoMutation = useUpdateGrupo();
   const deleteGrupoMutation = useDeleteGrupo();
+
+  /* ─── RBAC: filtered cargo options ─── */
+  const allowedCargos = useMemo(() => {
+    return CARGOS.filter((c) => {
+      const targetLevel = ROLE_LEVEL[CARGO_MAP[c]] ?? 4;
+      return targetLevel > currentLevel;
+    });
+  }, [currentLevel]);
+
+  const canCreateUsers = hasPermission("CREATE_USER");
+  const canEditUsers = hasPermission("EDIT_USER");
+  const canCreateSquads = hasPermission("CREATE_SQUAD");
+  const canEditSquads = hasPermission("EDIT_SQUAD");
+  const canManagePermissions = hasPermission("MANAGE_PERMISSIONS");
 
   /* ─── Derived data with fallback ─── */
   const users = useMemo(() => {
@@ -390,7 +411,7 @@ export default function Configuracoes() {
               <input type="text" placeholder="Filtrar usuário..." value={search} onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
             </div>
-            <button onClick={() => setUserModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background text-sm font-semibold hover:opacity-90 transition-opacity">
+            <button onClick={() => setUserModal(true)} className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-foreground text-background text-sm font-semibold hover:opacity-90 transition-opacity ${!canCreateUsers ? 'hidden' : ''}`}>
               <UserPlus size={16} />Novo Usuário
             </button>
           </div>
@@ -413,8 +434,8 @@ export default function Configuracoes() {
                   <span className="text-sm font-medium text-foreground">{user.squad}</span>
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => openEditModal(user)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                    <button onClick={() => handleDeleteUser(user.id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                    {canEditUsers && <button onClick={() => openEditModal(user)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>}
+                    {canEditUsers && <button onClick={() => handleDeleteUser(user.id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>}
                   </div>
                 </div>
               );
@@ -427,7 +448,7 @@ export default function Configuracoes() {
         <TabsContent value="gestao-squads" className="mt-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-sm font-bold uppercase tracking-widest text-foreground">Estrutura Operacional</h2>
-            <button onClick={() => setSquadModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <button onClick={() => setSquadModal(true)} className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors ${!canCreateSquads ? 'hidden' : ''}`}>
               <Plus size={16} />Novo Squad
             </button>
           </div>
@@ -439,8 +460,8 @@ export default function Configuracoes() {
                   <div className="flex items-start justify-between">
                     <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><Target size={22} className="text-primary" /></div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => openEditSquadModal(squad)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"><Pencil size={14} /></button>
-                      <button onClick={() => handleRemoveSquad(squad.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
+                      {canEditSquads && <button onClick={() => openEditSquadModal(squad)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"><Pencil size={14} /></button>}
+                      {canEditSquads && <button onClick={() => handleRemoveSquad(squad.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>}
                     </div>
                   </div>
                   <p className="text-xl font-bold text-foreground">{squad.name}</p>
@@ -652,7 +673,7 @@ export default function Configuracoes() {
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Cargo Hierárquico</label>
                   <select value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    {CARGOS.map((c) => <option key={c}>{c}</option>)}
+                    {(allowedCargos.length > 0 ? allowedCargos : CARGOS).map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
@@ -695,7 +716,7 @@ export default function Configuracoes() {
                   onChange={(e) => setEditCargo(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 >
-                  {CARGOS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {(allowedCargos.length > 0 ? allowedCargos : CARGOS).map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div>

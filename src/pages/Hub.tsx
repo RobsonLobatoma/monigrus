@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { Shield, Search, Users, AlertTriangle, TrendingUp } from "lucide-react";
 import { useGrupos } from "@/hooks/useGrupos";
-
+import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
+import { Navigate } from "react-router-dom";
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type HubStatus   = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 
@@ -83,7 +84,15 @@ function statusToScore(status: string): number {
 
 export default function Hub() {
   const { data: dbGrupos } = useGrupos();
+  const { role, userName, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
+
+  // GERENTE não acessa Hub
+  if (!roleLoading && role === "GERENTE") {
+    return <Navigate to="/" replace />;
+  }
+
+  const displayName = userName ?? "Colaborador";
 
   const GRUPOS = useMemo((): GrupoRow[] => {
     if (dbGrupos && dbGrupos.length > 0) {
@@ -120,7 +129,7 @@ export default function Hub() {
         className="rounded-2xl px-8 py-7"
         style={{ background: "linear-gradient(135deg, #3b5bdb 0%, #6741d9 100%)" }}
       >
-        <h1 className="text-3xl font-extrabold text-white mb-1">Olá, Dr. Ricardo!</h1>
+        <h1 className="text-3xl font-extrabold text-white mb-1">Olá, {displayName}!</h1>
         <p className="text-white/80 text-base mb-3">Estes são os grupos sob sua responsabilidade direta.</p>
         <p className="text-[11px] font-bold uppercase tracking-widest text-white/60">
           Seu desempenho impacta diretamente o score da unidade.

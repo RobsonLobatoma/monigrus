@@ -10,19 +10,27 @@ import {
   Shield,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Hub do Colaborador", url: "/hub", icon: Users },
-  { title: "Anomalias", url: "/anomalias", icon: AlertTriangle },
-  { title: "Monitoramento", url: "/monitoramento", icon: Monitor },
-  { title: "Conexões", url: "/conexoes", icon: Link2 },
-  { title: "Configurações", url: "/configuracoes", icon: Settings },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, permissionCode: null },
+  { title: "Hub do Colaborador", url: "/hub", icon: Users, permissionCode: "VIEW_HUB" },
+  { title: "Anomalias", url: "/anomalias", icon: AlertTriangle, permissionCode: "VIEW_ANOMALIAS" },
+  { title: "Monitoramento", url: "/monitoramento", icon: Monitor, permissionCode: "VIEW_MONITORAMENTO" },
+  { title: "Conexões", url: "/conexoes", icon: Link2, permissionCode: "VIEW_CONEXOES" },
+  { title: "Configurações", url: "/configuracoes", icon: Settings, permissionCode: "VIEW_CONFIGURACOES" },
 ];
 
 export function AppSidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
+  const { hasPermission, loading: roleLoading } = useCurrentUserRole();
+
+  const visibleItems = navItems.filter((item) => {
+    if (!item.permissionCode) return true;
+    if (roleLoading) return true; // show all while loading for no flash
+    return hasPermission(item.permissionCode);
+  });
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 flex flex-col bg-[hsl(var(--sidebar-background))] border-r border-[hsl(var(--sidebar-border))] z-40">
@@ -38,7 +46,7 @@ export function AppSidebar() {
 
       {/* Nav items */}
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = location.pathname === item.url;
           return (
             <Link
