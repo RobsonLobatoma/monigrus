@@ -1,0 +1,1 @@
+UPDATE public.user_roles SET role = 'DIRETOR'::app_role WHERE user_id = '10c6d7c8-3fb5-4474-9442-2960e178bb0d';
