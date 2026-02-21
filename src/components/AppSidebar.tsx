@@ -7,27 +7,20 @@ import {
   Link2,
   Settings,
   LogOut,
+  Shield,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
-type AppRole = "DIRETOR" | "GERENTE" | "SUPERVISOR" | "OPERACIONAL";
-
-const allNavItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["DIRETOR", "GERENTE", "SUPERVISOR", "OPERACIONAL"] },
-  { title: "Hub do Colaborador", url: "/hub", icon: Users, roles: ["DIRETOR", "GERENTE", "SUPERVISOR", "OPERACIONAL"] },
-  { title: "Anomalias", url: "/anomalias", icon: AlertTriangle, roles: ["DIRETOR", "GERENTE", "SUPERVISOR"] },
-  { title: "Monitoramento", url: "/monitoramento", icon: Monitor, roles: ["DIRETOR", "GERENTE", "SUPERVISOR", "OPERACIONAL"] },
-  { title: "Conexões", url: "/conexoes", icon: Link2, roles: ["DIRETOR", "GERENTE"] },
-  { title: "Configurações", url: "/configuracoes", icon: Settings, roles: ["DIRETOR", "GERENTE"] },
-] as const;
+const navItems = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Hub do Colaborador", url: "/hub", icon: Users },
+  { title: "Anomalias", url: "/anomalias", icon: AlertTriangle },
+  { title: "Monitoramento", url: "/monitoramento", icon: Monitor },
+  { title: "Conexões", url: "/conexoes", icon: Link2 },
+  { title: "Configurações", url: "/configuracoes", icon: Settings },
+];
 
 export function AppSidebar() {
   const location = useLocation();
-  const { role, signOut } = useAuth();
-
-  const navItems = allNavItems.filter(
-    (item) => !role || (item.roles as readonly string[]).includes(role)
-  );
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 flex flex-col bg-[hsl(var(--sidebar-background))] border-r border-[hsl(var(--sidebar-border))] z-40">
@@ -67,10 +60,7 @@ export function AppSidebar() {
 
       {/* Sair */}
       <div className="px-3 py-4 border-t border-[hsl(var(--sidebar-border))]">
-        <button
-          onClick={signOut}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] transition-all duration-150 w-full"
-        >
+        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] transition-all duration-150 w-full">
           <LogOut size={18} className="opacity-70" />
           <span>Sair</span>
         </button>

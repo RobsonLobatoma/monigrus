@@ -523,43 +523,28 @@ export type Database = {
         Row: {
           ativo: boolean
           created_at: string
-          gestor: string | null
           id: string
-          mensagens: number
           nome: string
           sector_id: string | null
-          sla: string
-          status: string
           team_id: string | null
-          ultima_atividade: string | null
           updated_at: string
         }
         Insert: {
           ativo?: boolean
           created_at?: string
-          gestor?: string | null
           id?: string
-          mensagens?: number
           nome: string
           sector_id?: string | null
-          sla?: string
-          status?: string
           team_id?: string | null
-          ultima_atividade?: string | null
           updated_at?: string
         }
         Update: {
           ativo?: boolean
           created_at?: string
-          gestor?: string | null
           id?: string
-          mensagens?: number
           nome?: string
           sector_id?: string | null
-          sla?: string
-          status?: string
           team_id?: string | null
-          ultima_atividade?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -776,29 +761,23 @@ export type Database = {
       teams: {
         Row: {
           created_at: string
-          gestores: string[]
           id: string
           is_active: boolean
           name: string
-          supervisor: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
-          gestores?: string[]
           id?: string
           is_active?: boolean
           name: string
-          supervisor?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
-          gestores?: string[]
           id?: string
           is_active?: boolean
           name?: string
-          supervisor?: string | null
           updated_at?: string
         }
         Relationships: []

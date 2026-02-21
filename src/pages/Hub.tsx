@@ -1,9 +1,28 @@
 import { useState } from "react";
-import { Shield, Search, Users, AlertTriangle, TrendingUp, Loader2 } from "lucide-react";
-import { useGrupos } from "@/hooks/useGrupos";
+import { Shield, Search, Users, AlertTriangle, TrendingUp } from "lucide-react";
 
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type HubStatus   = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
+
+interface GrupoRow {
+  id: number;
+  dataHora: string;
+  grupo: string;
+  gestor: string;
+  squad: string;
+  satisfacao: Satisfacao;
+  score: number;
+  status: HubStatus;
+  descricao: string;
+}
+
+const GRUPOS: GrupoRow[] = [
+  { id: 1, dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",  gestor: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: '"Cliente confirmou recebimento do parecer."' },
+  { id: 2, dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",  gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: '"Cliente pediu atualização dos honorários."' },
+  { id: 3, dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",  gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: '"Cliente reclamou falta de posicionamento."' },
+  { id: 4, dataHora: "27/12/2026\n06:08", grupo: "Advogados SP",         gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: '"Cliente analisando proposta."' },
+  { id: 5, dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",      gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: '"4 mensagens sem retorno."' },
+];
 
 const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ótimo:   { background: "#22c55e", color: "#ffffff" },
@@ -11,18 +30,11 @@ const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
 
-function scoreToSatisfacao(score: number): Satisfacao {
-  if (score >= 80) return "Ótimo";
-  if (score >= 50) return "Regular";
-  return "Ruim";
-}
 
-function statusToHubStatus(status: string): HubStatus {
-  const s = status?.toUpperCase();
-  if (s === "RESOLVIDO") return "RESOLVIDO";
-  if (s === "CRÍTICO" || s === "CRITICO") return "CRÍTICO";
-  return "PENDENTE";
-}
+const totalGrupos = GRUPOS.length;
+const criticos    = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
+const scoreMedia  = Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length);
+const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
 
 const thStyle: React.CSSProperties = {
   padding: "12px 12px",
@@ -64,20 +76,11 @@ const cellFill: React.CSSProperties = {
 
 export default function Hub() {
   const [search, setSearch] = useState("");
-  const { data: grupos = [], isLoading } = useGrupos();
 
-  // Calcular métricas dinamicamente
-  const totalGrupos = grupos.length;
-  const criticos    = grupos.filter((g) => statusToHubStatus(g.status) === "CRÍTICO").length;
-  const resolvidos  = grupos.filter((g) => statusToHubStatus(g.status) === "RESOLVIDO").length;
-  const scoreMedia  = totalGrupos > 0
-    ? Math.round(grupos.reduce((acc, g) => acc + (g.mensagens > 0 ? Math.max(0, 100 - g.mensagens) : 100), 0) / totalGrupos)
-    : 0;
-
-  const filtered = grupos.filter(
+  const filtered = GRUPOS.filter(
     (g) =>
-      g.nome.toLowerCase().includes(search.toLowerCase()) ||
-      (g.gestor ?? "").toLowerCase().includes(search.toLowerCase())
+      g.grupo.toLowerCase().includes(search.toLowerCase()) ||
+      g.gestor.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -106,10 +109,7 @@ export default function Hub() {
             <div className={`w-9 h-9 rounded-lg ${card.accent} flex items-center justify-center`}>{card.icon}</div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{card.label}</p>
-              {isLoading
-                ? <div className="h-8 w-12 bg-muted animate-pulse rounded mt-0.5" />
-                : <p className="text-2xl font-bold text-foreground mt-0.5">{card.value}</p>
-              }
+              <p className="text-2xl font-bold text-foreground mt-0.5">{card.value}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>
             </div>
           </div>
@@ -136,104 +136,119 @@ export default function Hub() {
         </div>
 
         <div className="rounded-xl border border-border bg-card overflow-hidden">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16 gap-3 text-muted-foreground">
-              <Loader2 size={20} className="animate-spin" />
-              <span className="text-sm">Carregando grupos...</span>
-            </div>
-          ) : (
-            <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
-              <colgroup>
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "80px" }} />
-                <col style={{ width: "120px" }} />
-                <col />
-              </colgroup>
+          <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "90px" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "130px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
+              <col />
+            </colgroup>
 
-              <thead>
-                <tr>
-                  <th style={{ ...thStyle, paddingLeft: "20px" }}>GRUPO</th>
-                  <th style={thStyle}>GESTOR DE TRÁFEGO</th>
-                  <th style={thStyle}>SQUAD</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
-                  <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
-                  <th style={thStyle}>STATUS</th>
-                  <th style={thStyle}>SLA</th>
-                </tr>
-              </thead>
+            {/* ── Header ── */}
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, paddingLeft: "20px" }}>DATA/HORA</th>
+                <th style={thStyle}>GRUPO</th>
+                <th style={thStyle}>GESTOR DE TRÁFEGO</th>
+                <th style={thStyle}>SQUAD</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
+                <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
+                <th style={thStyle}>STATUS</th>
+                <th style={thStyle}>DESCRIÇÃO</th>
+              </tr>
+            </thead>
 
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
-                      {grupos.length === 0
-                        ? "Nenhum grupo cadastrado. Adicione grupos em Configurações."
-                        : "Nenhum grupo encontrado."}
+            {/* ── Body ── */}
+            <tbody>
+              {filtered.map((row, idx) => {
+                const satStyle = SAT_STYLE[row.satisfacao];
+                const isLast = idx === filtered.length - 1;
+                const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
+
+                return (
+                  <tr key={row.id} style={{ height: "56px" }}>
+
+                    {/* DATA/HORA */}
+                    <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                        {row.dataHora}
+                      </p>
                     </td>
-                  </tr>
-                ) : (
-                  filtered.map((row, idx) => {
-                    const score = Math.max(0, 100 - (row.mensagens ?? 0));
-                    const satisfacao = scoreToSatisfacao(score);
-                    const hubStatus = statusToHubStatus(row.status);
-                    const satStyle = SAT_STYLE[satisfacao];
-                    const isLast = idx === filtered.length - 1;
-                    const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
 
-                    return (
-                      <tr key={row.id} style={{ height: "56px" }}>
-                        <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
-                          <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row.nome}
-                          </p>
-                        </td>
-                        <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                          <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row.gestor ?? "—"}
-                          </p>
-                        </td>
-                        <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                          <span style={{ fontSize: "12px", fontWeight: 500, color: "hsl(var(--primary))", background: "hsl(var(--primary)/0.1)", padding: "2px 8px", borderRadius: "4px" }}>
-                            {row.team_id ? row.team_id.slice(0, 6) : "—"}
-                          </span>
-                        </td>
-                        <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
-                          <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
-                            {satisfacao}
-                          </div>
-                        </td>
-                        <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
-                          <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
-                            {score}
-                          </div>
-                        </td>
-                        <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                          <span style={{ fontSize: "11px", fontWeight: 500, letterSpacing: "0.04em", color: "#111827", whiteSpace: "nowrap" }}>
-                            {hubStatus}
-                          </span>
-                        </td>
-                        <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                          <span style={{
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            padding: "2px 8px",
-                            borderRadius: "4px",
-                            background: row.sla === "DENTRO DO SLA" ? "hsl(142 76% 90%)" : "hsl(0 84% 93%)",
-                            color: row.sla === "DENTRO DO SLA" ? "hsl(142 76% 30%)" : "hsl(0 84% 40%)",
-                          }}>
-                            {row.sla}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          )}
+                    {/* GRUPO */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.grupo}
+                      </p>
+                    </td>
+
+                    {/* GESTOR */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.gestor}
+                      </p>
+                    </td>
+
+                    {/* SQUAD */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "13px", fontWeight: 500, color: "hsl(var(--foreground))" }}>
+                        {row.squad}
+                      </p>
+                    </td>
+
+                    {/* SATISFAÇÃO — full-height colored block */}
+                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                        {row.satisfacao}
+                      </div>
+                    </td>
+
+                    {/* SCORE — full-height colored block */}
+                    <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                      <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                        {row.score}
+                      </div>
+                    </td>
+
+                    {/* STATUS — plain black text */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        letterSpacing: "0.04em",
+                        color: "#111827",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {row.status}
+                      </span>
+                    </td>
+
+                    {/* DESCRIÇÃO */}
+                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                      <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {row.descricao}
+                      </p>
+                    </td>
+
+                  </tr>
+                );
+              })}
+
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                    Nenhum grupo encontrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

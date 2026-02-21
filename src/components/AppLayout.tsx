@@ -1,7 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { Moon, Sun } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -9,7 +8,6 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [isDark, setIsDark] = useState(false);
-  const { profile, role } = useAuth();
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -31,17 +29,6 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   };
 
-  const displayName = profile?.full_name ?? "Usuário";
-  const displayRole = role ?? "—";
-  const avatarLetter = displayName.trim().charAt(0).toUpperCase();
-
-  const roleLabel: Record<string, string> = {
-    DIRETOR: "Diretor",
-    GERENTE: "Gerente",
-    SUPERVISOR: "Supervisor",
-    OPERACIONAL: "Operacional",
-  };
-
   return (
     <div className="flex min-h-screen bg-background">
       <AppSidebar />
@@ -60,13 +47,11 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-sm font-semibold leading-tight text-foreground">{displayName}</p>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">
-                {roleLabel[displayRole] ?? displayRole}
-              </p>
+              <p className="text-sm font-semibold leading-tight text-foreground">Dr. Ricardo</p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">Diretor</p>
             </div>
             <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-semibold text-sm">{avatarLetter}</span>
+              <span className="text-primary-foreground font-semibold text-sm">D</span>
             </div>
           </div>
         </header>

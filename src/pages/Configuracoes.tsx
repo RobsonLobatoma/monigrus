@@ -3,15 +3,10 @@ import {
   Settings, Globe, Users, LayoutGrid, Hash, Shield, Save, History,
   Search, UserPlus, Pencil, Trash2, X, Target, Plus, MoreVertical,
   Clock, MessageSquare, Filter, Save as SaveIcon, AlertTriangle,
-  Monitor, Link2, CheckCircle2, Circle, Loader2,
+  Monitor, Link2, CheckCircle2, Circle,
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from "@/hooks/useTeams";
-import type { Team } from "@/hooks/useTeams";
-import { useGrupos, useCreateGrupo, useUpdateGrupo, useDeleteGrupo } from "@/hooks/useGrupos";
-import type { Grupo } from "@/hooks/useGrupos";
-import { useUserProfiles, useUpdateUserProfile, useDeleteUserProfile } from "@/hooks/useUserProfiles";
 
 /* ─── Usuários & Cargos ─── */
 const CARGO_COLORS: Record<string, string> = {
@@ -19,16 +14,42 @@ const CARGO_COLORS: Record<string, string> = {
   GERENTE: "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400",
   SUPERVISOR: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400",
   "GESTOR DE TRÁFEGO": "text-orange-600 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400",
-  OPERACIONAL: "text-gray-600 bg-gray-100 dark:bg-gray-900/30 dark:text-gray-400",
 };
-const CARGOS = ["DIRETOR", "GERENTE", "SUPERVISOR", "OPERACIONAL"];
+const CARGOS = ["Diretor", "Gerente", "Supervisor", "Gestor de Tráfego"];
+const SQUAD_OPTIONS = ["MASTER", "ELITE", "SQT1", "SQT2", "SQT3"];
+const initialUsers = [
+  { id: 1, name: "Dr. Ricardo",    email: "diretor@sistema.com", cargo: "DIRETOR",          squad: "MASTER" },
+  { id: 2, name: "Ana Maria",      email: "gerente@sistema.com", cargo: "GERENTE",           squad: "ELITE"  },
+  { id: 3, name: "Carlos Eduardo", email: "carlos@sistema.com",  cargo: "SUPERVISOR",        squad: "SQT1"   },
+  { id: 4, name: "Seu Madruga",    email: "madruga@sistema.com", cargo: "GESTOR DE TRÁFEGO", squad: "SQT1"   },
+];
+
+/* ─── Squads ─── */
 const SUPERVISOR_OPTIONS = ["Carlos Eduardo", "Karla Mendes", "João Lima", "Ana Maria"];
 const GESTORES_OPTIONS   = ["Seu Madruga", "Patrícia", "Karla", "Roberto", "João Lima", "André"];
+const initialSquads = [
+  { id: 1, name: "SQT1", supervisor: "Carlos Eduardo", supervisorInitial: "C", gestores: ["SEU MADRUGA", "PATRÍCIA"] },
+  { id: 2, name: "SQT2", supervisor: "Karla Mendes",   supervisorInitial: "K", gestores: ["KARLA", "ROBERTO"] },
+  { id: 3, name: "SQT3", supervisor: "João Lima",      supervisorInitial: "J", gestores: ["JOÃO LIMA", "ANDRÉ"] },
+];
+const AVATAR_COLORS: Record<string, string> = {
+  C: "bg-green-500", K: "bg-blue-500", J: "bg-orange-500",
+  A: "bg-purple-500", D: "bg-red-500",  S: "bg-teal-500",
+};
 
 /* ─── Grupos ─── */
+type GrupoStatus = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 type GrupoSLA    = "DENTRO DO SLA" | "FORA DO SLA";
+interface Grupo { id: number; nome: string; uuid: string; squad: string; gestor: string; sla: GrupoSLA; status: GrupoStatus; mensagens: number; ultimaAtividade: string; }
+const initialGrupos: Grupo[] = [
+  { id: 1, nome: "Dr. Silva Advocacia",  uuid: "UUID: 1", squad: "SQT1", gestor: "Seu Madruga", sla: "DENTRO DO SLA", status: "RESOLVIDO", mensagens: 25,  ultimaAtividade: "27/12/2026 05:15" },
+  { id: 2, nome: "Mendes & Associados",  uuid: "UUID: 2", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 83,  ultimaAtividade: "27/12/2026 09:39" },
+  { id: 3, nome: "Dra. Paula Oliveira",  uuid: "UUID: 3", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 128, ultimaAtividade: "27/12/2026 05:45" },
+  { id: 4, nome: "Advogados SP",         uuid: "UUID: 4", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 300, ultimaAtividade: "27/12/2026 06:08" },
+  { id: 5, nome: "Santos Jurídica",      uuid: "UUID: 5", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 143, ultimaAtividade: "27/12/2026 06:15" },
+];
 const SLA_STYLE: Record<GrupoSLA, string>    = { "DENTRO DO SLA": "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", "FORA DO SLA": "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
-const STATUS_STYLE: Record<string, string> = { RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", PENDENTE: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400", CRÍTICO: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
+const STATUS_STYLE: Record<GrupoStatus, string> = { RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", PENDENTE: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400", CRÍTICO: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
 
 /* ─── Hierarquia & Permissões ─── */
 type Cargo = "DIRETOR" | "GERENTE" | "SUPERVISOR" | "GESTOR DE TRÁFEGO";
@@ -42,6 +63,7 @@ const HIERARCHY = [
 
 const SIMULATOR_CARGOS: Cargo[] = ["DIRETOR", "GERENTE", "SUPERVISOR", "GESTOR DE TRÁFEGO"];
 
+// permission matrix: [Diretor, Gerente, Supervisor, Gestor de Tráfego]
 const ACCESS_MATRIX: { label: string; icon: JSX.Element; perms: [boolean, boolean, boolean, boolean] }[] = [
   { label: "Monitoramento",    icon: <Monitor size={15} className="text-muted-foreground" />,  perms: [true,  true,  true,  false] },
   { label: "Hub do Colaborador", icon: <Users size={15} className="text-muted-foreground" />,  perms: [true,  false, true,  true]  },
@@ -50,74 +72,60 @@ const ACCESS_MATRIX: { label: string; icon: JSX.Element; perms: [boolean, boolea
   { label: "Configurações",    icon: <Settings size={15} className="text-muted-foreground" />, perms: [true,  true,  true,  true]  },
 ];
 
-const AVATAR_COLORS: Record<string, string> = {
-  C: "bg-green-500", K: "bg-blue-500", J: "bg-orange-500",
-  A: "bg-purple-500", D: "bg-red-500", S: "bg-teal-500",
-};
-
-function SkeletonRow() {
-  return (
-    <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] items-center px-6 py-4 border-b border-border">
-      {[1,2,3,4,5].map((i) => <div key={i} className="h-4 bg-muted animate-pulse rounded w-3/4" />)}
-    </div>
-  );
-}
-
 export default function Configuracoes() {
-  /* ── Supabase hooks ── */
-  const { data: userProfiles = [], isLoading: loadingUsers } = useUserProfiles();
-  const { data: teamsData = [], isLoading: loadingTeams } = useTeams();
-  const { data: gruposData = [], isLoading: loadingGrupos } = useGrupos();
-
-  const updateUser = useUpdateUserProfile();
-  const deleteUser = useDeleteUserProfile();
-  const createTeam = useCreateTeam();
-  const updateTeam = useUpdateTeam();
-  const deleteTeam = useDeleteTeam();
-  const createGrupo = useCreateGrupo();
-  const updateGrupo = useUpdateGrupo();
-  const deleteGrupo = useDeleteGrupo();
-
-  /* ── Usuários ── */
-  const [search, setSearch] = useState("");
+  /* Usuários */
+  const [users, setUsers]         = useState(initialUsers);
+  const [search, setSearch]       = useState("");
   const [userModal, setUserModal] = useState(false);
   const [newName, setNewName]     = useState("");
-  const [newCargo, setNewCargo]   = useState("DIRETOR");
+  const [newCargo, setNewCargo]   = useState("Diretor");
+  const [newSquad, setNewSquad]   = useState("SQT1");
 
   /* Edição de Usuário */
+  type UserRow = typeof initialUsers[number];
   const [editModal, setEditModal] = useState(false);
-  const [editUserId, setEditUserId] = useState<string | null>(null);
+  const [editUser, setEditUser]   = useState<UserRow | null>(null);
   const [editName, setEditName]   = useState("");
-  const [editCargo, setEditCargo] = useState("DIRETOR");
+  const [editCargo, setEditCargo] = useState("Diretor");
+  const [editSquad, setEditSquad] = useState("SQT1");
 
-  const openEditModal = (u: typeof userProfiles[number]) => {
-    setEditUserId(u.user_id);
-    setEditName(u.full_name);
-    setEditCargo(u.role ?? "OPERACIONAL");
+  const openEditModal = (user: UserRow) => {
+    setEditUser(user);
+    setEditName(user.name);
+    setEditCargo(user.cargo.charAt(0).toUpperCase() + user.cargo.slice(1).toLowerCase());
+    setEditSquad(user.squad);
     setEditModal(true);
   };
   const handleSaveEdit = () => {
-    if (!editUserId || !editName.trim()) return;
-    updateUser.mutate({ user_id: editUserId, full_name: editName.trim() }, {
-      onSuccess: () => { setEditModal(false); setEditUserId(null); },
-    });
+    if (!editUser || !editName.trim()) return;
+    setUsers((prev) => prev.map((u) =>
+      u.id === editUser.id
+        ? { ...u, name: editName.trim(), cargo: editCargo.toUpperCase(), squad: editSquad }
+        : u
+    ));
+    setEditModal(false);
+    setEditUser(null);
   };
 
-  /* ── Squads ── */
+  /* Squads */
+  type SquadRow = typeof initialSquads[number];
+  const [squads, setSquads]                     = useState(initialSquads);
   const [squadModal, setSquadModal]             = useState(false);
   const [newSquadName, setNewSquadName]         = useState("");
   const [newSupervisor, setNewSupervisor]       = useState("Carlos Eduardo");
+
+  /* Edição de Squad */
   const [editSquadModal, setEditSquadModal]     = useState(false);
-  const [editSquadId, setEditSquadId]           = useState<string | null>(null);
+  const [editSquadData, setEditSquadData]       = useState<SquadRow | null>(null);
   const [editSquadName, setEditSquadName]       = useState("");
   const [editSquadSup, setEditSquadSup]         = useState("Carlos Eduardo");
   const [editSquadGestores, setEditSquadGestores] = useState<string[]>([]);
 
-  const openEditSquadModal = (squad: Team) => {
-    setEditSquadId(squad.id);
+  const openEditSquadModal = (squad: SquadRow) => {
+    setEditSquadData(squad);
     setEditSquadName(squad.name);
-    setEditSquadSup(squad.supervisor ?? "Carlos Eduardo");
-    setEditSquadGestores([...(squad.gestores ?? [])]);
+    setEditSquadSup(squad.supervisor);
+    setEditSquadGestores([...squad.gestores]);
     setEditSquadModal(true);
   };
   const toggleGestor = (g: string) => {
@@ -126,72 +134,87 @@ export default function Configuracoes() {
     );
   };
   const handleSaveSquad = () => {
-    if (!editSquadId || !editSquadName.trim()) return;
-    updateTeam.mutate({ id: editSquadId, name: editSquadName.trim().toUpperCase(), supervisor: editSquadSup, gestores: editSquadGestores }, {
-      onSuccess: () => { setEditSquadModal(false); setEditSquadId(null); },
-    });
+    if (!editSquadData || !editSquadName.trim()) return;
+    setSquads((prev) => prev.map((s) =>
+      s.id === editSquadData.id
+        ? { ...s, name: editSquadName.trim().toUpperCase(), supervisor: editSquadSup, supervisorInitial: editSquadSup.charAt(0).toUpperCase(), gestores: editSquadGestores }
+        : s
+    ));
+    setEditSquadModal(false);
+    setEditSquadData(null);
   };
-  const handleAtivarSquad = () => {
-    if (!newSquadName.trim()) return;
-    createTeam.mutate({ name: newSquadName.trim().toUpperCase(), supervisor: newSupervisor, gestores: [] }, {
-      onSuccess: () => { setNewSquadName(""); setNewSupervisor("Carlos Eduardo"); setSquadModal(false); },
-    });
+  const handleRemoveSquad = (id: number) => {
+    setSquads((prev) => prev.filter((s) => s.id !== id));
   };
 
-  /* ── Grupos ── */
+  /* Grupos */
+  const [grupos, setGrupos]               = useState<Grupo[]>(initialGrupos);
   const [grupoSearch, setGrupoSearch]     = useState("");
   const [slaFilter, setSlaFilter]         = useState<"todos" | GrupoSLA>("todos");
   const [grupoModal, setGrupoModal]       = useState(false);
   const [slaTime, setSlaTime]             = useState("09:30");
   const [newGrupoNome, setNewGrupoNome]   = useState("");
+  const [newGrupoSquad, setNewGrupoSquad] = useState("SQT1");
   const [newGrupoGestor, setNewGrupoGestor] = useState("Seu Madruga");
 
+  /* Edição de Grupo */
   const [editGrupoModal, setEditGrupoModal] = useState(false);
-  const [editGrupoId, setEditGrupoId]       = useState<string | null>(null);
+  const [editGrupoData, setEditGrupoData]   = useState<Grupo | null>(null);
   const [editGrupoNome, setEditGrupoNome]   = useState("");
+  const [editGrupoSquad, setEditGrupoSquad] = useState("SQT1");
   const [editGrupoGestor, setEditGrupoGestor] = useState("Seu Madruga");
   const [editGrupoSla, setEditGrupoSla]     = useState<GrupoSLA>("DENTRO DO SLA");
 
   const openEditGrupoModal = (g: Grupo) => {
-    setEditGrupoId(g.id);
+    setEditGrupoData(g);
     setEditGrupoNome(g.nome);
-    setEditGrupoGestor(g.gestor ?? "Seu Madruga");
-    setEditGrupoSla((g.sla as GrupoSLA) ?? "DENTRO DO SLA");
+    setEditGrupoSquad(g.squad);
+    setEditGrupoGestor(g.gestor);
+    setEditGrupoSla(g.sla);
     setEditGrupoModal(true);
   };
   const handleSaveGrupo = () => {
-    if (!editGrupoId || !editGrupoNome.trim()) return;
-    updateGrupo.mutate({ id: editGrupoId, nome: editGrupoNome.trim(), gestor: editGrupoGestor, sla: editGrupoSla }, {
-      onSuccess: () => { setEditGrupoModal(false); setEditGrupoId(null); },
-    });
-  };
-  const handleIniciarMonitoramento = () => {
-    if (!newGrupoNome.trim()) return;
-    createGrupo.mutate({ nome: newGrupoNome.trim(), gestor: newGrupoGestor, sla: "DENTRO DO SLA", status: "PENDENTE" }, {
-      onSuccess: () => { setNewGrupoNome(""); setNewGrupoGestor("Seu Madruga"); setGrupoModal(false); },
-    });
+    if (!editGrupoData || !editGrupoNome.trim()) return;
+    setGrupos((prev) => prev.map((x) =>
+      x.id === editGrupoData.id
+        ? { ...x, nome: editGrupoNome.trim(), squad: editGrupoSquad, gestor: editGrupoGestor, sla: editGrupoSla }
+        : x
+    ));
+    setEditGrupoModal(false);
+    setEditGrupoData(null);
   };
 
-  /* ── Hierarquia & Permissões ── */
+  /* Hierarquia & Permissões */
   const [simCargo, setSimCargo] = useState<Cargo>("DIRETOR");
-  const cargoIndex: Record<Cargo, number> = { "DIRETOR": 0, "GERENTE": 1, "SUPERVISOR": 2, "GESTOR DE TRÁFEGO": 3 };
 
-  /* ── Filtros ── */
-  const filteredUsers = userProfiles.filter(
-    (u) => u.full_name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
+  /* Handlers */
+  const filteredUsers = users.filter(
+    (u) => u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())
   );
-  const filteredGrupos = gruposData.filter((g) => {
+  const filteredGrupos = grupos.filter((g) => {
     const matchSearch = g.nome.toLowerCase().includes(grupoSearch.toLowerCase());
     const matchSla    = slaFilter === "todos" || g.sla === slaFilter;
     return matchSearch && matchSla;
   });
 
-  const noAuthWarning = (
-    <div className="flex items-center gap-2 px-4 py-3 mb-4 rounded-lg border border-yellow-400/40 bg-yellow-400/10 text-yellow-700 dark:text-yellow-400 text-xs font-medium">
-      <AlertTriangle size={14} />
-      <span>Sem usuário autenticado — os dados do Supabase ficam vazios. Implemente o login para persistir e visualizar registros.</span>
-    </div>
-  );
+  const handleCadastrarUser = () => {
+    if (!newName.trim()) return;
+    setUsers((prev) => [...prev, { id: Date.now(), name: newName.trim(), email: `${newName.trim().toLowerCase().replace(/\s+/g, ".")}@sistema.com`, cargo: newCargo.toUpperCase(), squad: newSquad }]);
+    setNewName(""); setNewCargo("Diretor"); setNewSquad("SQT1"); setUserModal(false);
+  };
+  const handleAtivarSquad = () => {
+    if (!newSquadName.trim()) return;
+    const sup = newSupervisor;
+    setSquads((prev) => [...prev, { id: Date.now(), name: newSquadName.trim().toUpperCase(), supervisor: sup, supervisorInitial: sup.charAt(0).toUpperCase(), gestores: [] }]);
+    setNewSquadName(""); setNewSupervisor("Carlos Eduardo"); setSquadModal(false);
+  };
+  const handleIniciarMonitoramento = () => {
+    if (!newGrupoNome.trim()) return;
+    setGrupos((prev) => [...prev, { id: Date.now(), nome: newGrupoNome.trim(), uuid: `UUID: ${prev.length + 1}`, squad: newGrupoSquad, gestor: newGrupoGestor, sla: "DENTRO DO SLA", status: "PENDENTE", mensagens: 0, ultimaAtividade: "—" }]);
+    setNewGrupoNome(""); setNewGrupoSquad("SQT1"); setNewGrupoGestor("Seu Madruga"); setGrupoModal(false);
+  };
+
+  const cargoIndex: Record<Cargo, number> = { "DIRETOR": 0, "GERENTE": 1, "SUPERVISOR": 2, "GESTOR DE TRÁFEGO": 3 };
 
   return (
     <div className="space-y-6">
@@ -232,19 +255,8 @@ export default function Configuracoes() {
             <div className="rounded-xl p-6 text-white" style={{ background: "linear-gradient(135deg, #3b5bdb 0%, #6741d9 100%)" }}>
               <div className="flex items-center gap-3 mb-4"><Globe size={22} className="text-white" /><h2 className="text-xl font-bold">Sistema de Acesso Inteligente</h2></div>
               <p className="text-sm text-white/85 leading-relaxed mb-6">Esta área controla a visibilidade de usuários, grupos e acessos operacionais. As permissões são baseadas em cargos (RBAC) e o sistema se adapta ao seu nível hierárquico.</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-                  <p className="text-xl font-bold text-white">{loadingUsers ? "…" : userProfiles.length}</p>
-                  <p className="text-[10px] text-white/70 uppercase tracking-wide">Usuários</p>
-                </div>
-                <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-                  <p className="text-xl font-bold text-white">{loadingTeams ? "…" : teamsData.length}</p>
-                  <p className="text-[10px] text-white/70 uppercase tracking-wide">Squads</p>
-                </div>
-                <div className="rounded-lg bg-white/10 px-3 py-2 text-center">
-                  <p className="text-xl font-bold text-white">{loadingGrupos ? "…" : gruposData.length}</p>
-                  <p className="text-[10px] text-white/70 uppercase tracking-wide">Grupos</p>
-                </div>
+              <div className="rounded-lg border border-white/20 bg-white/10 px-4 py-3">
+                <p className="text-sm font-mono text-white/80 italic">"SIMULAÇÃO FRONT-END (SEM BACKEND)"</p>
               </div>
             </div>
             <div className="rounded-xl border border-border bg-card p-6 flex flex-col items-center justify-center text-center gap-3">
@@ -258,7 +270,6 @@ export default function Configuracoes() {
 
         {/* ════ Usuários & Cargos ════ */}
         <TabsContent value="usuarios-cargos" className="mt-6">
-          {!loadingUsers && userProfiles.length === 0 && noAuthWarning}
           <div className="flex items-center justify-between mb-5">
             <div className="relative w-72">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -275,86 +286,73 @@ export default function Configuracoes() {
                 <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
               ))}
             </div>
-            {loadingUsers ? (
-              <>{[1,2,3].map((i) => <SkeletonRow key={i} />)}</>
-            ) : filteredUsers.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
-            ) : filteredUsers.map((user) => {
-              const initial = user.full_name.charAt(0).toUpperCase();
-              const role = user.role?.toUpperCase() ?? "OPERACIONAL";
-              const cargoClass = CARGO_COLORS[role] ?? "text-muted-foreground bg-muted";
+            {filteredUsers.map((user) => {
+              const initial = user.name.charAt(0).toUpperCase();
+              const cargoClass = CARGO_COLORS[user.cargo] ?? "text-muted-foreground bg-muted";
               return (
-                <div key={user.user_id} className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                <div key={user.id} className="grid grid-cols-[2fr_1.5fr_1fr_1fr_80px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center flex-shrink-0"><span className="text-sm font-bold text-primary">{initial}</span></div>
-                    <div><p className="text-sm font-semibold text-foreground">{user.full_name}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
+                    <div><p className="text-sm font-semibold text-foreground">{user.name}</p><p className="text-xs text-muted-foreground">{user.email}</p></div>
                   </div>
-                  <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${cargoClass}`}>{role}</span></div>
-                  <span className="text-sm font-medium text-foreground">—</span>
+                  <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${cargoClass}`}>{user.cargo}</span></div>
+                  <span className="text-sm font-medium text-foreground">{user.squad}</span>
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
                     <button onClick={() => openEditModal(user)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                    <button onClick={() => deleteUser.mutate(user.user_id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                    <button onClick={() => setUsers((p) => p.filter((u) => u.id !== user.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
                   </div>
                 </div>
               );
             })}
+            {filteredUsers.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">Nenhum usuário encontrado.</div>}
           </div>
         </TabsContent>
 
         {/* ════ Gestão de Squads ════ */}
         <TabsContent value="gestao-squads" className="mt-6">
-          {!loadingTeams && teamsData.length === 0 && noAuthWarning}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-sm font-bold uppercase tracking-widest text-foreground">Estrutura Operacional</h2>
             <button onClick={() => setSquadModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
               <Plus size={16} />Novo Squad
             </button>
           </div>
-          {loadingTeams ? (
-            <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
-              <Loader2 size={18} className="animate-spin" /><span className="text-sm">Carregando squads...</span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {teamsData.map((squad) => {
-                const initial = (squad.supervisor ?? squad.name).charAt(0).toUpperCase();
-                const avatarBg = AVATAR_COLORS[initial] ?? "bg-primary";
-                return (
-                  <div key={squad.id} className="rounded-xl border border-border bg-card p-5 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><Target size={22} className="text-primary" /></div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => openEditSquadModal(squad)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"><Pencil size={14} /></button>
-                        <button onClick={() => deleteTeam.mutate(squad.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {squads.map((squad) => {
+              const avatarBg = AVATAR_COLORS[squad.supervisorInitial] ?? "bg-primary";
+              return (
+                <div key={squad.id} className="rounded-xl border border-border bg-card p-5 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><Target size={22} className="text-primary" /></div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditSquadModal(squad)} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"><Pencil size={14} /></button>
+                      <button onClick={() => handleRemoveSquad(squad.id)} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
                     </div>
-                    <p className="text-xl font-bold text-foreground">{squad.name}</p>
-                    <div className="rounded-lg border border-dashed border-border p-3">
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Supervisor Resp.</p>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center`}><span className="text-xs font-bold text-white">{initial}</span></div>
-                        <span className="text-sm font-semibold text-foreground">{squad.supervisor ?? "—"}</span>
-                      </div>
-                    </div>
-                    {(squad.gestores ?? []).length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Gestores Vinculados ({squad.gestores.length})</p>
-                        <div className="flex flex-wrap gap-2">
-                          {squad.gestores.map((g) => <span key={g} className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-border text-muted-foreground bg-muted/40 uppercase tracking-wide">{g}</span>)}
-                        </div>
-                      </div>
-                    )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <p className="text-xl font-bold text-foreground">{squad.name}</p>
+                  <div className="rounded-lg border border-dashed border-border p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Supervisor Resp.</p>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-full ${avatarBg} flex items-center justify-center`}><span className="text-xs font-bold text-white">{squad.supervisorInitial}</span></div>
+                      <span className="text-sm font-semibold text-foreground">{squad.supervisor}</span>
+                    </div>
+                  </div>
+                  {squad.gestores.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">Gestores Vinculados ({squad.gestores.length})</p>
+                      <div className="flex flex-wrap gap-2">
+                        {squad.gestores.map((g) => <span key={g} className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-border text-muted-foreground bg-muted/40 uppercase tracking-wide">{g}</span>)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </TabsContent>
 
         {/* ════ Gestão de Grupos ════ */}
         <TabsContent value="gestao-grupos" className="mt-6 space-y-5">
-          {!loadingGrupos && gruposData.length === 0 && noAuthWarning}
           <div className="flex items-center gap-4 rounded-xl border border-border bg-card px-5 py-4">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"><Clock size={20} className="text-primary" /></div>
             <div className="flex-1">
@@ -392,31 +390,28 @@ export default function Configuracoes() {
                 <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
               ))}
             </div>
-            {loadingGrupos ? (
-              <div className="flex items-center justify-center py-12 gap-2 text-muted-foreground">
-                <Loader2 size={18} className="animate-spin" /><span className="text-sm">Carregando grupos...</span>
-              </div>
-            ) : filteredGrupos.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">Nenhum grupo encontrado.</div>
-            ) : filteredGrupos.map((g) => (
+            {filteredGrupos.map((g) => (
               <div key={g.id} className="grid grid-cols-[2fr_1.5fr_1.2fr_1.2fr_1fr_1.4fr_90px] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
-                <div><p className="text-sm font-semibold text-foreground">{g.nome}</p><p className="text-xs text-muted-foreground">{g.id.slice(0, 8)}…</p></div>
-                <div><p className="text-sm font-semibold text-foreground">—</p><p className="text-xs text-muted-foreground">{g.gestor ?? "—"}</p></div>
-                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${SLA_STYLE[g.sla as GrupoSLA] ?? "text-muted-foreground bg-muted"}`}>{g.sla}</span></div>
-                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${STATUS_STYLE[g.status?.toUpperCase()] ?? "text-muted-foreground bg-muted"}`}>{g.status}</span></div>
+                <div><p className="text-sm font-semibold text-foreground">{g.nome}</p><p className="text-xs text-muted-foreground">{g.uuid}</p></div>
+                <div><p className="text-sm font-semibold text-foreground">{g.squad}</p><p className="text-xs text-muted-foreground">{g.gestor}</p></div>
+                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${SLA_STYLE[g.sla]}`}>{g.sla}</span></div>
+                <div><span className={`inline-block text-[11px] font-bold tracking-wide px-2.5 py-1 rounded-md ${STATUS_STYLE[g.status]}`}>{g.status}</span></div>
                 <div className="flex items-center gap-1.5 text-sm text-muted-foreground"><MessageSquare size={14} /><span className="font-semibold text-foreground">{g.mensagens}</span></div>
-                <p className="text-xs text-muted-foreground">{g.ultima_atividade ?? "—"}</p>
+                <p className="text-xs text-muted-foreground whitespace-pre-line">{g.ultimaAtividade.replace(" ", "\n")}</p>
                 <div className="flex items-center gap-3">
                   <button onClick={() => openEditGrupoModal(g)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                  <button onClick={() => deleteGrupo.mutate(g.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
                 </div>
               </div>
             ))}
+            {filteredGrupos.length === 0 && <div className="py-12 text-center text-sm text-muted-foreground">Nenhum grupo encontrado.</div>}
           </div>
         </TabsContent>
 
         {/* ════ Hierarquia & Permissões ════ */}
         <TabsContent value="hierarquia-permissoes" className="mt-6 space-y-8">
+
+          {/* Fluxo Hierárquico */}
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-center mb-5">
               Fluxo Hierárquico do Sistema
@@ -445,18 +440,32 @@ export default function Configuracoes() {
             </div>
           </div>
 
+          {/* Simulador de Cargo */}
           <div className="rounded-2xl p-6 relative overflow-hidden" style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)" }}>
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-10"><Shield size={120} className="text-white" /></div>
+            {/* Ghost shield */}
+            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-10">
+              <Shield size={120} className="text-white" />
+            </div>
             <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-3"><Shield size={18} className="text-primary" /><h3 className="text-base font-bold uppercase tracking-wide text-white">Simulador de Cargo</h3></div>
+              <div className="flex items-center gap-2 mb-3">
+                <Shield size={18} className="text-primary" />
+                <h3 className="text-base font-bold uppercase tracking-wide text-white">Simulador de Cargo</h3>
+              </div>
               <p className="text-sm text-slate-300 mb-5 max-w-lg leading-relaxed">
                 <span className="text-yellow-400 font-bold">⚠ MODO SIMULAÇÃO:</span>{" "}
                 Selecione o cargo abaixo para alternar IMEDIATAMENTE a visibilidade de abas e listas de grupos em toda esta página.
               </p>
               <div className="flex flex-wrap gap-2">
                 {SIMULATOR_CARGOS.map((c) => (
-                  <button key={c} onClick={() => setSimCargo(c)}
-                    className={`px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${simCargo === c ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}>
+                  <button
+                    key={c}
+                    onClick={() => setSimCargo(c)}
+                    className={`px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${
+                      simCargo === c
+                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
+                        : "bg-white/10 text-slate-300 hover:bg-white/20"
+                    }`}
+                  >
                     {c}
                   </button>
                 ))}
@@ -464,6 +473,7 @@ export default function Configuracoes() {
             </div>
           </div>
 
+          {/* Matriz de Acessos */}
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -471,23 +481,35 @@ export default function Configuracoes() {
                 <p className="text-xs text-muted-foreground mt-0.5">Defina quais módulos cada cargo pode acessar por padrão.</p>
               </div>
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-red-500 uppercase tracking-wide">
-                <AlertTriangle size={13} />Somente diretores podem editar a matriz
+                <AlertTriangle size={13} />
+                Somente diretores podem editar a matriz
               </div>
             </div>
+
             <div className="rounded-xl border border-border bg-card overflow-hidden">
+              {/* Table header */}
               <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] px-6 py-3 border-b border-border">
                 {["MÓDULO", "DIRETOR", "GERENTE", "SUPERVISOR", "GESTOR DE TRÁFEGO"].map((h) => (
                   <span key={h} className="text-[11px] font-semibold tracking-widest text-muted-foreground uppercase">{h}</span>
                 ))}
               </div>
+
+              {/* Rows */}
               {ACCESS_MATRIX.map((row) => (
                 <div key={row.label} className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center px-6 py-4 border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                  <div className="flex items-center gap-2.5">{row.icon}<span className="text-sm font-medium text-foreground">{row.label}</span></div>
+                  <div className="flex items-center gap-2.5">
+                    {row.icon}
+                    <span className="text-sm font-medium text-foreground">{row.label}</span>
+                  </div>
                   {row.perms.map((allowed, ci) => {
                     const isSimActive = cargoIndex[simCargo] === ci;
                     return (
                       <div key={ci} className={`flex items-center transition-all ${isSimActive ? "scale-110" : ""}`}>
-                        {allowed ? <CheckCircle2 size={22} className="text-green-500" /> : <Circle size={22} className="text-muted-foreground/30" />}
+                        {allowed ? (
+                          <CheckCircle2 size={22} className="text-green-500" />
+                        ) : (
+                          <Circle size={22} className="text-muted-foreground/30" />
+                        )}
                       </div>
                     );
                   })}
@@ -507,25 +529,35 @@ export default function Configuracoes() {
               <button onClick={() => setUserModal(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
             <div className="px-6 py-5 space-y-5">
-              <div className="rounded-lg border border-yellow-400/40 bg-yellow-400/10 text-yellow-700 dark:text-yellow-400 text-xs px-3 py-2">
-                Usuários são criados via autenticação Supabase. Use o painel Supabase para convidar usuários.
-              </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Cargo</label>
-                <select value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
-                  {CARGOS.map((c) => <option key={c}>{c}</option>)}
-                </select>
+                <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Nome Completo</label>
+                <input type="text" placeholder="Ex: Roberto Silva" value={newName} onChange={(e) => setNewName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Cargo Hierárquico</label>
+                  <select value={newCargo} onChange={(e) => setNewCargo(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    {CARGOS.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Squad Destino</label>
+                  <select value={newSquad} onChange={(e) => setNewSquad(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    {SQUAD_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={() => setUserModal(false)} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Fechar</button>
+              <button onClick={handleCadastrarUser} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Cadastrar Colaborador</button>
             </div>
           </div>
         </div>
       )}
 
       {/* ══ Modal: Editar Usuário ══ */}
-      {editModal && (
+      {editModal && editUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
@@ -535,22 +567,43 @@ export default function Configuracoes() {
             <div className="px-6 py-5 space-y-5">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome</label>
-                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Cargo</label>
+                <select
+                  value={editCargo}
+                  onChange={(e) => setEditCargo(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {CARGOS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Squad</label>
+                <select
+                  value={editSquad}
+                  onChange={(e) => setEditSquad(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={handleSaveEdit} disabled={updateUser.isPending}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {updateUser.isPending && <Loader2 size={14} className="animate-spin" />}Salvar Alterações
-              </button>
+              <button onClick={handleSaveEdit} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
       )}
 
       {/* ══ Modal: Editar Squad ══ */}
-      {editSquadModal && (
+      {editSquadModal && editSquadData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
@@ -560,13 +613,20 @@ export default function Configuracoes() {
             <div className="px-6 py-5 space-y-5">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome do Squad</label>
-                <input type="text" value={editSquadName} onChange={(e) => setEditSquadName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <input
+                  type="text"
+                  value={editSquadName}
+                  onChange={(e) => setEditSquadName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Supervisor Responsável</label>
-                <select value={editSquadSup} onChange={(e) => setEditSquadSup(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                <select
+                  value={editSquadSup}
+                  onChange={(e) => setEditSquadSup(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
                   {SUPERVISOR_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
@@ -576,8 +636,11 @@ export default function Configuracoes() {
                   {GESTORES_OPTIONS.map((g) => {
                     const active = editSquadGestores.includes(g.toUpperCase());
                     return (
-                      <button key={g} onClick={() => toggleGestor(g)}
-                        className={`text-[11px] font-semibold px-3 py-1.5 rounded-md border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground bg-muted/40 hover:border-primary/50"}`}>
+                      <button
+                        key={g}
+                        onClick={() => toggleGestor(g)}
+                        className={`text-[11px] font-semibold px-3 py-1.5 rounded-md border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground bg-muted/40 hover:border-primary/50"}`}
+                      >
                         {g}
                       </button>
                     );
@@ -586,10 +649,7 @@ export default function Configuracoes() {
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={handleSaveSquad} disabled={updateTeam.isPending}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {updateTeam.isPending && <Loader2 size={14} className="animate-spin" />}Salvar Alterações
-              </button>
+              <button onClick={handleSaveSquad} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
@@ -611,24 +671,20 @@ export default function Configuracoes() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Supervisor Responsável</label>
-                <select value={newSupervisor} onChange={(e) => setNewSupervisor(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                <select value={newSupervisor} onChange={(e) => setNewSupervisor(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
                   {SUPERVISOR_OPTIONS.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={handleAtivarSquad} disabled={createTeam.isPending}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {createTeam.isPending && <Loader2 size={14} className="animate-spin" />}Ativar Squad
-              </button>
+              <button onClick={handleAtivarSquad} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Ativar Squad</button>
             </div>
           </div>
         </div>
       )}
 
       {/* ══ Modal: Editar Grupo ══ */}
-      {editGrupoModal && (
+      {editGrupoModal && editGrupoData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
@@ -638,13 +694,30 @@ export default function Configuracoes() {
             <div className="px-6 py-5 space-y-4">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Nome do Grupo</label>
-                <input type="text" value={editGrupoNome} onChange={(e) => setEditGrupoNome(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                <input
+                  type="text"
+                  value={editGrupoNome}
+                  onChange={(e) => setEditGrupoNome(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Squad</label>
+                <select
+                  value={editGrupoSquad}
+                  onChange={(e) => setEditGrupoSquad(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {["SQT1","SQT2","SQT3","MASTER","ELITE"].map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Gestor Responsável</label>
-                <select value={editGrupoGestor} onChange={(e) => setEditGrupoGestor(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                <select
+                  value={editGrupoGestor}
+                  onChange={(e) => setEditGrupoGestor(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
                   {GESTORES_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
@@ -652,8 +725,11 @@ export default function Configuracoes() {
                 <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">SLA</label>
                 <div className="flex gap-3">
                   {(["DENTRO DO SLA", "FORA DO SLA"] as GrupoSLA[]).map((sla) => (
-                    <button key={sla} onClick={() => setEditGrupoSla(sla)}
-                      className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${editGrupoSla === sla ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}>
+                    <button
+                      key={sla}
+                      onClick={() => setEditGrupoSla(sla)}
+                      className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${editGrupoSla === sla ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                    >
                       {sla}
                     </button>
                   ))}
@@ -661,10 +737,7 @@ export default function Configuracoes() {
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={handleSaveGrupo} disabled={updateGrupo.isPending}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {updateGrupo.isPending && <Loader2 size={14} className="animate-spin" />}Salvar Alterações
-              </button>
+              <button onClick={handleSaveGrupo} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Salvar Alterações</button>
             </div>
           </div>
         </div>
@@ -684,19 +757,23 @@ export default function Configuracoes() {
                 <input type="text" placeholder="Ex: Suporte VIP - Cliente X" value={newGrupoNome} onChange={(e) => setNewGrupoNome(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Gestor Responsável</label>
-                <select value={newGrupoGestor} onChange={(e) => setNewGrupoGestor(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
-                  {GESTORES_OPTIONS.map((g) => <option key={g}>{g}</option>)}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Atribuir ao Squad</label>
+                  <select value={newGrupoSquad} onChange={(e) => setNewGrupoSquad(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    {SQUAD_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Gestor Responsável</label>
+                  <select value={newGrupoGestor} onChange={(e) => setNewGrupoGestor(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    {GESTORES_OPTIONS.map((g) => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
             <div className="px-6 pb-6">
-              <button onClick={handleIniciarMonitoramento} disabled={createGrupo.isPending}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-                {createGrupo.isPending && <Loader2 size={14} className="animate-spin" />}Iniciar Monitoramento
-              </button>
+              <button onClick={handleIniciarMonitoramento} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:bg-primary/90 transition-colors">Iniciar Monitoramento</button>
             </div>
           </div>
         </div>
