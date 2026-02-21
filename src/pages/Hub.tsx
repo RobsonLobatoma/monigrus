@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Shield, Search, Users, AlertTriangle, TrendingUp } from "lucide-react";
+import { useGrupos } from "@/hooks/useGrupos";
 
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type HubStatus   = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 
 interface GrupoRow {
-  id: number;
+  id: string;
   dataHora: string;
   grupo: string;
   gestor: string;
@@ -16,12 +17,12 @@ interface GrupoRow {
   descricao: string;
 }
 
-const GRUPOS: GrupoRow[] = [
-  { id: 1, dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",  gestor: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: '"Cliente confirmou recebimento do parecer."' },
-  { id: 2, dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",  gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: '"Cliente pediu atualização dos honorários."' },
-  { id: 3, dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",  gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: '"Cliente reclamou falta de posicionamento."' },
-  { id: 4, dataHora: "27/12/2026\n06:08", grupo: "Advogados SP",         gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: '"Cliente analisando proposta."' },
-  { id: 5, dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",      gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: '"4 mensagens sem retorno."' },
+const MOCK_GRUPOS: GrupoRow[] = [
+  { id: "mock-1", dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",  gestor: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: '"Cliente confirmou recebimento do parecer."' },
+  { id: "mock-2", dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",  gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: '"Cliente pediu atualização dos honorários."' },
+  { id: "mock-3", dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",  gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: '"Cliente reclamou falta de posicionamento."' },
+  { id: "mock-4", dataHora: "27/12/2026\n06:08", grupo: "Advogados SP",         gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: '"Cliente analisando proposta."' },
+  { id: "mock-5", dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",      gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: '"4 mensagens sem retorno."' },
 ];
 
 const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
@@ -29,12 +30,6 @@ const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
   Regular: { background: "#facc15", color: "#000000" },
   Ruim:    { background: "#ef4444", color: "#ffffff" },
 };
-
-
-const totalGrupos = GRUPOS.length;
-const criticos    = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
-const scoreMedia  = Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length);
-const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
 
 const thStyle: React.CSSProperties = {
   padding: "12px 12px",
@@ -74,8 +69,43 @@ const cellFill: React.CSSProperties = {
   fontSize: "13px",
 };
 
+function mapStatusToSatisfacao(status: string): Satisfacao {
+  if (status === "RESOLVIDO") return "Ótimo";
+  if (status === "CRÍTICO") return "Ruim";
+  return "Regular";
+}
+
+function statusToScore(status: string): number {
+  if (status === "RESOLVIDO") return Math.floor(Math.random() * 15) + 85;
+  if (status === "CRÍTICO") return Math.floor(Math.random() * 20) + 15;
+  return Math.floor(Math.random() * 20) + 45;
+}
+
 export default function Hub() {
+  const { data: dbGrupos } = useGrupos();
   const [search, setSearch] = useState("");
+
+  const GRUPOS = useMemo((): GrupoRow[] => {
+    if (dbGrupos && dbGrupos.length > 0) {
+      return dbGrupos.map((g) => ({
+        id: g.id,
+        dataHora: g.ultima_atividade ?? "—",
+        grupo: g.nome,
+        gestor: g.gestor ?? "—",
+        squad: "—",
+        satisfacao: mapStatusToSatisfacao(g.status),
+        score: g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : statusToScore(g.status),
+        status: (g.status as HubStatus) ?? "PENDENTE",
+        descricao: `"Grupo: ${g.nome}"`,
+      }));
+    }
+    return MOCK_GRUPOS;
+  }, [dbGrupos]);
+
+  const totalGrupos = GRUPOS.length;
+  const criticos    = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
+  const scoreMedia  = GRUPOS.length > 0 ? Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length) : 0;
+  const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
 
   const filtered = GRUPOS.filter(
     (g) =>
@@ -148,7 +178,6 @@ export default function Hub() {
               <col />
             </colgroup>
 
-            {/* ── Header ── */}
             <thead>
               <tr>
                 <th style={{ ...thStyle, paddingLeft: "20px" }}>DATA/HORA</th>
@@ -162,7 +191,6 @@ export default function Hub() {
               </tr>
             </thead>
 
-            {/* ── Body ── */}
             <tbody>
               {filtered.map((row, idx) => {
                 const satStyle = SAT_STYLE[row.satisfacao];
@@ -171,50 +199,36 @@ export default function Hub() {
 
                 return (
                   <tr key={row.id} style={{ height: "56px" }}>
-
-                    {/* DATA/HORA */}
                     <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
                       <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
                         {row.dataHora}
                       </p>
                     </td>
-
-                    {/* GRUPO */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.grupo}
                       </p>
                     </td>
-
-                    {/* GESTOR */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.gestor}
                       </p>
                     </td>
-
-                    {/* SQUAD */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "13px", fontWeight: 500, color: "hsl(var(--foreground))" }}>
                         {row.squad}
                       </p>
                     </td>
-
-                    {/* SATISFAÇÃO — full-height colored block */}
                     <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
                       <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
                         {row.satisfacao}
                       </div>
                     </td>
-
-                    {/* SCORE — full-height colored block */}
                     <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
                       <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
                         {row.score}
                       </div>
                     </td>
-
-                    {/* STATUS — plain black text */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <span style={{
                         display: "inline-flex",
@@ -228,14 +242,11 @@ export default function Hub() {
                         {row.status}
                       </span>
                     </td>
-
-                    {/* DESCRIÇÃO */}
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.descricao}
                       </p>
                     </td>
-
                   </tr>
                 );
               })}

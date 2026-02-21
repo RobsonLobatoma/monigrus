@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Settings, Globe, Users, LayoutGrid, Hash, Shield, Save, History,
   Search, UserPlus, Pencil, Trash2, X, Target, Plus, MoreVertical,
@@ -7,30 +7,40 @@ import {
 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { useUserProfiles, useUpdateUserProfile, useDeleteUserProfile } from "@/hooks/useUserProfiles";
+import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from "@/hooks/useTeams";
+import { useGrupos, useCreateGrupo, useUpdateGrupo, useDeleteGrupo } from "@/hooks/useGrupos";
 
 /* ─── Usuários & Cargos ─── */
 const CARGO_COLORS: Record<string, string> = {
   DIRETOR: "text-purple-600 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400",
   GERENTE: "text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400",
   SUPERVISOR: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400",
+  OPERACIONAL: "text-orange-600 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400",
   "GESTOR DE TRÁFEGO": "text-orange-600 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400",
 };
-const CARGOS = ["Diretor", "Gerente", "Supervisor", "Gestor de Tráfego"];
+const CARGOS = ["Diretor", "Gerente", "Supervisor", "Operacional"];
+const CARGO_MAP: Record<string, string> = {
+  "Diretor": "DIRETOR",
+  "Gerente": "GERENTE",
+  "Supervisor": "SUPERVISOR",
+  "Operacional": "OPERACIONAL",
+};
 const SQUAD_OPTIONS = ["MASTER", "ELITE", "SQT1", "SQT2", "SQT3"];
 const initialUsers = [
-  { id: 1, name: "Dr. Ricardo",    email: "diretor@sistema.com", cargo: "DIRETOR",          squad: "MASTER" },
-  { id: 2, name: "Ana Maria",      email: "gerente@sistema.com", cargo: "GERENTE",           squad: "ELITE"  },
-  { id: 3, name: "Carlos Eduardo", email: "carlos@sistema.com",  cargo: "SUPERVISOR",        squad: "SQT1"   },
-  { id: 4, name: "Seu Madruga",    email: "madruga@sistema.com", cargo: "GESTOR DE TRÁFEGO", squad: "SQT1"   },
+  { id: "mock-1", name: "Dr. Ricardo",    email: "diretor@sistema.com", cargo: "DIRETOR",          squad: "MASTER" },
+  { id: "mock-2", name: "Ana Maria",      email: "gerente@sistema.com", cargo: "GERENTE",           squad: "ELITE"  },
+  { id: "mock-3", name: "Carlos Eduardo", email: "carlos@sistema.com",  cargo: "SUPERVISOR",        squad: "SQT1"   },
+  { id: "mock-4", name: "Seu Madruga",    email: "madruga@sistema.com", cargo: "OPERACIONAL",       squad: "SQT1"   },
 ];
 
 /* ─── Squads ─── */
 const SUPERVISOR_OPTIONS = ["Carlos Eduardo", "Karla Mendes", "João Lima", "Ana Maria"];
 const GESTORES_OPTIONS   = ["Seu Madruga", "Patrícia", "Karla", "Roberto", "João Lima", "André"];
 const initialSquads = [
-  { id: 1, name: "SQT1", supervisor: "Carlos Eduardo", supervisorInitial: "C", gestores: ["SEU MADRUGA", "PATRÍCIA"] },
-  { id: 2, name: "SQT2", supervisor: "Karla Mendes",   supervisorInitial: "K", gestores: ["KARLA", "ROBERTO"] },
-  { id: 3, name: "SQT3", supervisor: "João Lima",      supervisorInitial: "J", gestores: ["JOÃO LIMA", "ANDRÉ"] },
+  { id: "mock-s1", name: "SQT1", supervisor: "Carlos Eduardo", supervisorInitial: "C", gestores: ["SEU MADRUGA", "PATRÍCIA"] },
+  { id: "mock-s2", name: "SQT2", supervisor: "Karla Mendes",   supervisorInitial: "K", gestores: ["KARLA", "ROBERTO"] },
+  { id: "mock-s3", name: "SQT3", supervisor: "João Lima",      supervisorInitial: "J", gestores: ["JOÃO LIMA", "ANDRÉ"] },
 ];
 const AVATAR_COLORS: Record<string, string> = {
   C: "bg-green-500", K: "bg-blue-500", J: "bg-orange-500",
@@ -40,13 +50,13 @@ const AVATAR_COLORS: Record<string, string> = {
 /* ─── Grupos ─── */
 type GrupoStatus = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 type GrupoSLA    = "DENTRO DO SLA" | "FORA DO SLA";
-interface Grupo { id: number; nome: string; uuid: string; squad: string; gestor: string; sla: GrupoSLA; status: GrupoStatus; mensagens: number; ultimaAtividade: string; }
+interface Grupo { id: string; nome: string; uuid: string; squad: string; gestor: string; sla: GrupoSLA; status: GrupoStatus; mensagens: number; ultimaAtividade: string; }
 const initialGrupos: Grupo[] = [
-  { id: 1, nome: "Dr. Silva Advocacia",  uuid: "UUID: 1", squad: "SQT1", gestor: "Seu Madruga", sla: "DENTRO DO SLA", status: "RESOLVIDO", mensagens: 25,  ultimaAtividade: "27/12/2026 05:15" },
-  { id: 2, nome: "Mendes & Associados",  uuid: "UUID: 2", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 83,  ultimaAtividade: "27/12/2026 09:39" },
-  { id: 3, nome: "Dra. Paula Oliveira",  uuid: "UUID: 3", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 128, ultimaAtividade: "27/12/2026 05:45" },
-  { id: 4, nome: "Advogados SP",         uuid: "UUID: 4", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 300, ultimaAtividade: "27/12/2026 06:08" },
-  { id: 5, nome: "Santos Jurídica",      uuid: "UUID: 5", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 143, ultimaAtividade: "27/12/2026 06:15" },
+  { id: "mock-g1", nome: "Dr. Silva Advocacia",  uuid: "UUID: 1", squad: "SQT1", gestor: "Seu Madruga", sla: "DENTRO DO SLA", status: "RESOLVIDO", mensagens: 25,  ultimaAtividade: "27/12/2026 05:15" },
+  { id: "mock-g2", nome: "Mendes & Associados",  uuid: "UUID: 2", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 83,  ultimaAtividade: "27/12/2026 09:39" },
+  { id: "mock-g3", nome: "Dra. Paula Oliveira",  uuid: "UUID: 3", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 128, ultimaAtividade: "27/12/2026 05:45" },
+  { id: "mock-g4", nome: "Advogados SP",         uuid: "UUID: 4", squad: "SQT2", gestor: "Karla",       sla: "FORA DO SLA",   status: "PENDENTE",  mensagens: 300, ultimaAtividade: "27/12/2026 06:08" },
+  { id: "mock-g5", nome: "Santos Jurídica",      uuid: "UUID: 5", squad: "SQT3", gestor: "João Lima",   sla: "FORA DO SLA",   status: "CRÍTICO",   mensagens: 143, ultimaAtividade: "27/12/2026 06:15" },
 ];
 const SLA_STYLE: Record<GrupoSLA, string>    = { "DENTRO DO SLA": "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", "FORA DO SLA": "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
 const STATUS_STYLE: Record<GrupoStatus, string> = { RESOLVIDO: "text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400", PENDENTE: "text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400", CRÍTICO: "text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400" };
@@ -73,8 +83,65 @@ const ACCESS_MATRIX: { label: string; icon: JSX.Element; perms: [boolean, boolea
 ];
 
 export default function Configuracoes() {
+  /* ─── Supabase hooks ─── */
+  const { data: dbUsers, isLoading: loadingUsers } = useUserProfiles();
+  const { data: dbTeams, isLoading: loadingTeams } = useTeams();
+  const { data: dbGrupos, isLoading: loadingGrupos } = useGrupos();
+
+  const updateUserMutation = useUpdateUserProfile();
+  const deleteUserMutation = useDeleteUserProfile();
+  const createTeamMutation = useCreateTeam();
+  const updateTeamMutation = useUpdateTeam();
+  const deleteTeamMutation = useDeleteTeam();
+  const createGrupoMutation = useCreateGrupo();
+  const updateGrupoMutation = useUpdateGrupo();
+  const deleteGrupoMutation = useDeleteGrupo();
+
+  /* ─── Derived data with fallback ─── */
+  const users = useMemo(() => {
+    if (dbUsers && dbUsers.length > 0) {
+      return dbUsers.map((u) => ({
+        id: u.user_id,
+        name: u.full_name,
+        email: u.email,
+        cargo: u.role,
+        squad: "—",
+      }));
+    }
+    return initialUsers;
+  }, [dbUsers]);
+
+  const squads = useMemo(() => {
+    if (dbTeams && dbTeams.length > 0) {
+      return dbTeams.map((t) => ({
+        id: t.id,
+        name: t.name,
+        supervisor: t.supervisor ?? "—",
+        supervisorInitial: (t.supervisor ?? "—").charAt(0).toUpperCase(),
+        gestores: t.gestores ?? [],
+      }));
+    }
+    return initialSquads;
+  }, [dbTeams]);
+
+  const grupos = useMemo((): Grupo[] => {
+    if (dbGrupos && dbGrupos.length > 0) {
+      return dbGrupos.map((g) => ({
+        id: g.id,
+        nome: g.nome,
+        uuid: `UUID: ${g.id.slice(0, 8)}`,
+        squad: "—",
+        gestor: g.gestor ?? "—",
+        sla: (g.sla as GrupoSLA) ?? "DENTRO DO SLA",
+        status: (g.status as GrupoStatus) ?? "PENDENTE",
+        mensagens: g.mensagens ?? 0,
+        ultimaAtividade: g.ultima_atividade ?? "—",
+      }));
+    }
+    return initialGrupos;
+  }, [dbGrupos]);
+
   /* Usuários */
-  const [users, setUsers]         = useState(initialUsers);
   const [search, setSearch]       = useState("");
   const [userModal, setUserModal] = useState(false);
   const [newName, setNewName]     = useState("");
@@ -82,7 +149,7 @@ export default function Configuracoes() {
   const [newSquad, setNewSquad]   = useState("SQT1");
 
   /* Edição de Usuário */
-  type UserRow = typeof initialUsers[number];
+  type UserRow = typeof users[number];
   const [editModal, setEditModal] = useState(false);
   const [editUser, setEditUser]   = useState<UserRow | null>(null);
   const [editName, setEditName]   = useState("");
@@ -92,24 +159,28 @@ export default function Configuracoes() {
   const openEditModal = (user: UserRow) => {
     setEditUser(user);
     setEditName(user.name);
-    setEditCargo(user.cargo.charAt(0).toUpperCase() + user.cargo.slice(1).toLowerCase());
+    const cargoLabel = CARGOS.find(c => c.toUpperCase() === user.cargo.toUpperCase()) ?? "Diretor";
+    setEditCargo(cargoLabel);
     setEditSquad(user.squad);
     setEditModal(true);
   };
   const handleSaveEdit = () => {
     if (!editUser || !editName.trim()) return;
-    setUsers((prev) => prev.map((u) =>
-      u.id === editUser.id
-        ? { ...u, name: editName.trim(), cargo: editCargo.toUpperCase(), squad: editSquad }
-        : u
-    ));
+    const isMock = editUser.id.startsWith("mock-");
+    if (!isMock) {
+      const newRole = CARGO_MAP[editCargo] ?? editCargo.toUpperCase();
+      updateUserMutation.mutate({
+        user_id: editUser.id,
+        profile: { full_name: editName.trim() },
+        role: newRole,
+      });
+    }
     setEditModal(false);
     setEditUser(null);
   };
 
   /* Squads */
-  type SquadRow = typeof initialSquads[number];
-  const [squads, setSquads]                     = useState(initialSquads);
+  type SquadRow = typeof squads[number];
   const [squadModal, setSquadModal]             = useState(false);
   const [newSquadName, setNewSquadName]         = useState("");
   const [newSupervisor, setNewSupervisor]       = useState("Carlos Eduardo");
@@ -135,20 +206,26 @@ export default function Configuracoes() {
   };
   const handleSaveSquad = () => {
     if (!editSquadData || !editSquadName.trim()) return;
-    setSquads((prev) => prev.map((s) =>
-      s.id === editSquadData.id
-        ? { ...s, name: editSquadName.trim().toUpperCase(), supervisor: editSquadSup, supervisorInitial: editSquadSup.charAt(0).toUpperCase(), gestores: editSquadGestores }
-        : s
-    ));
+    const isMock = editSquadData.id.startsWith("mock-");
+    if (!isMock) {
+      updateTeamMutation.mutate({
+        id: editSquadData.id,
+        name: editSquadName.trim().toUpperCase(),
+        supervisor: editSquadSup,
+        gestores: editSquadGestores,
+      });
+    }
     setEditSquadModal(false);
     setEditSquadData(null);
   };
-  const handleRemoveSquad = (id: number) => {
-    setSquads((prev) => prev.filter((s) => s.id !== id));
+  const handleRemoveSquad = (id: string) => {
+    const isMock = id.startsWith("mock-");
+    if (!isMock) {
+      deleteTeamMutation.mutate(id);
+    }
   };
 
   /* Grupos */
-  const [grupos, setGrupos]               = useState<Grupo[]>(initialGrupos);
   const [grupoSearch, setGrupoSearch]     = useState("");
   const [slaFilter, setSlaFilter]         = useState<"todos" | GrupoSLA>("todos");
   const [grupoModal, setGrupoModal]       = useState(false);
@@ -175,11 +252,15 @@ export default function Configuracoes() {
   };
   const handleSaveGrupo = () => {
     if (!editGrupoData || !editGrupoNome.trim()) return;
-    setGrupos((prev) => prev.map((x) =>
-      x.id === editGrupoData.id
-        ? { ...x, nome: editGrupoNome.trim(), squad: editGrupoSquad, gestor: editGrupoGestor, sla: editGrupoSla }
-        : x
-    ));
+    const isMock = editGrupoData.id.startsWith("mock-");
+    if (!isMock) {
+      updateGrupoMutation.mutate({
+        id: editGrupoData.id,
+        nome: editGrupoNome.trim(),
+        gestor: editGrupoGestor,
+        sla: editGrupoSla,
+      });
+    }
     setEditGrupoModal(false);
     setEditGrupoData(null);
   };
@@ -199,22 +280,48 @@ export default function Configuracoes() {
 
   const handleCadastrarUser = () => {
     if (!newName.trim()) return;
-    setUsers((prev) => [...prev, { id: Date.now(), name: newName.trim(), email: `${newName.trim().toLowerCase().replace(/\s+/g, ".")}@sistema.com`, cargo: newCargo.toUpperCase(), squad: newSquad }]);
+    // Users are created via Supabase Auth registration (trigger handle_new_user)
+    // This modal is kept for UI consistency
     setNewName(""); setNewCargo("Diretor"); setNewSquad("SQT1"); setUserModal(false);
   };
   const handleAtivarSquad = () => {
     if (!newSquadName.trim()) return;
-    const sup = newSupervisor;
-    setSquads((prev) => [...prev, { id: Date.now(), name: newSquadName.trim().toUpperCase(), supervisor: sup, supervisorInitial: sup.charAt(0).toUpperCase(), gestores: [] }]);
+    createTeamMutation.mutate({
+      name: newSquadName.trim().toUpperCase(),
+      supervisor: newSupervisor,
+      gestores: [],
+    });
     setNewSquadName(""); setNewSupervisor("Carlos Eduardo"); setSquadModal(false);
   };
   const handleIniciarMonitoramento = () => {
     if (!newGrupoNome.trim()) return;
-    setGrupos((prev) => [...prev, { id: Date.now(), nome: newGrupoNome.trim(), uuid: `UUID: ${prev.length + 1}`, squad: newGrupoSquad, gestor: newGrupoGestor, sla: "DENTRO DO SLA", status: "PENDENTE", mensagens: 0, ultimaAtividade: "—" }]);
+    createGrupoMutation.mutate({
+      nome: newGrupoNome.trim(),
+      gestor: newGrupoGestor,
+      sla: "DENTRO DO SLA",
+      status: "PENDENTE",
+      mensagens: 0,
+    });
     setNewGrupoNome(""); setNewGrupoSquad("SQT1"); setNewGrupoGestor("Seu Madruga"); setGrupoModal(false);
   };
 
+  const handleDeleteUser = (id: string) => {
+    const isMock = id.startsWith("mock-");
+    if (!isMock) {
+      deleteUserMutation.mutate(id);
+    }
+  };
+
+  const handleDeleteGrupo = (id: string) => {
+    const isMock = id.startsWith("mock-");
+    if (!isMock) {
+      deleteGrupoMutation.mutate(id);
+    }
+  };
+
   const cargoIndex: Record<Cargo, number> = { "DIRETOR": 0, "GERENTE": 1, "SUPERVISOR": 2, "GESTOR DE TRÁFEGO": 3 };
+
+  const isLoading = loadingUsers || loadingTeams || loadingGrupos;
 
   return (
     <div className="space-y-6">
@@ -231,6 +338,13 @@ export default function Configuracoes() {
           <Save size={16} /> Salvar Tudo
         </Button>
       </div>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <span className="ml-3 text-sm text-muted-foreground">Carregando dados...</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="visao-geral" className="w-full">
@@ -256,7 +370,7 @@ export default function Configuracoes() {
               <div className="flex items-center gap-3 mb-4"><Globe size={22} className="text-white" /><h2 className="text-xl font-bold">Sistema de Acesso Inteligente</h2></div>
               <p className="text-sm text-white/85 leading-relaxed mb-6">Esta área controla a visibilidade de usuários, grupos e acessos operacionais. As permissões são baseadas em cargos (RBAC) e o sistema se adapta ao seu nível hierárquico.</p>
               <div className="rounded-lg border border-white/20 bg-white/10 px-4 py-3">
-                <p className="text-sm font-mono text-white/80 italic">"SIMULAÇÃO FRONT-END (SEM BACKEND)"</p>
+                <p className="text-sm font-mono text-white/80 italic">"CONECTADO AO SUPABASE"</p>
               </div>
             </div>
             <div className="rounded-xl border border-border bg-card p-6 flex flex-col items-center justify-center text-center gap-3">
@@ -300,7 +414,7 @@ export default function Configuracoes() {
                   <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /></div>
                   <div className="flex items-center gap-3">
                     <button onClick={() => openEditModal(user)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                    <button onClick={() => setUsers((p) => p.filter((u) => u.id !== user.id))} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                    <button onClick={() => handleDeleteUser(user.id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
                   </div>
                 </div>
               );
@@ -400,7 +514,7 @@ export default function Configuracoes() {
                 <p className="text-xs text-muted-foreground whitespace-pre-line">{g.ultimaAtividade.replace(" ", "\n")}</p>
                 <div className="flex items-center gap-3">
                   <button onClick={() => openEditGrupoModal(g)} className="text-muted-foreground hover:text-foreground transition-colors"><Pencil size={15} /></button>
-                  <button onClick={() => setGrupos((p) => p.filter((x) => x.id !== g.id))} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
+                  <button onClick={() => handleDeleteGrupo(g.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={15} /></button>
                 </div>
               </div>
             ))}
