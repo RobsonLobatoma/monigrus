@@ -1,122 +1,78 @@
 
 
-## Tela de Login, Registro, Google Auth e Recuperacao de Senha
+## Plano: Promover usuario a DIRETOR + Conectar Configuracoes ao Supabase
 
-### Resumo
+### O que sera feito
 
-Criar o sistema completo de autenticacao integrado ao Supabase Auth, com login por email/senha, registro, login com Google, e recuperacao de senha. Novos usuarios cadastrados serao automaticamente vistos nas secoes de Configuracoes gracas ao trigger `handle_new_user` ja existente no banco (que cria `user_profiles` e `user_roles` automaticamente).
+1. **Atualizar o cargo de `rowaizemarketing@gmail.com` para DIRETOR** no banco de dados (tabela `user_roles`)
+2. **Criar 3 hooks React Query** para buscar dados reais do Supabase
+3. **Conectar a pagina Configuracoes** ao banco de dados, mantendo os dados mockados como fallback
+4. **Conectar Hub e Monitoramento** aos dados reais de grupos
 
-Nenhum layout, menu ou funcionalidade existente sera removido ou alterado.
+### Usuarios existentes no banco
+
+| Nome | Email | Cargo Atual |
+|---|---|---|
+| Rowaize Marketing Digital | rowaizemarketing@gmail.com | OPERACIONAL -> **DIRETOR** |
+| robsonlobato31 | robsonlobato31@gmail.com | OPERACIONAL |
+| Robson Lobato | rowaizemkt@gmail.com | DIRETOR |
+
+As tabelas `teams` e `grupos` estao vazias no banco. Os dados mockados serao mantidos como fallback visual ate que dados reais sejam inseridos.
 
 ---
 
-### Arquivos a criar
+### Etapa 1 — Atualizar cargo no banco
 
-| Arquivo | Descricao |
+Executar UPDATE na tabela `user_roles` para alterar o role de `rowaizemarketing@gmail.com` (user_id: `10c6d7c8-3fb5-4474-9442-2960e178bb0d`) de `OPERACIONAL` para `DIRETOR`.
+
+### Etapa 2 — Criar hooks compartilhados
+
+Criar 3 arquivos com hooks React Query que buscam dados do Supabase e invalidam cache apos mutacoes:
+
+| Arquivo | Funcionalidade |
 |---|---|
-| `src/contexts/AuthContext.tsx` | Contexto global de autenticacao com sessao Supabase, login, registro, logout, reset password |
-| `src/components/ProtectedRoute.tsx` | Wrapper que redireciona para /login se nao autenticado |
-| `src/pages/Login.tsx` | Tela de login com email/senha + botao Google + link para registro e recuperacao |
-| `src/pages/Register.tsx` | Tela de registro com nome, email e senha |
-| `src/pages/ForgotPassword.tsx` | Tela para solicitar reset de senha por email |
-| `src/pages/ResetPassword.tsx` | Tela para definir nova senha (acessada via link do email) |
+| `src/hooks/useUserProfiles.ts` | Lista `user_profiles` + `user_roles` com join; mutations para update e delete |
+| `src/hooks/useTeams.ts` | Lista `teams` ativas; mutations para create, update e delete (soft delete) |
+| `src/hooks/useGrupos.ts` | Lista `grupos` ativos; mutations para create, update e delete (soft delete) |
 
-### Arquivos a modificar
+### Etapa 3 — Atualizar Configuracoes.tsx
 
-| Arquivo | O que muda |
-|---|---|
-| `src/App.tsx` | Envolver com `AuthProvider`; adicionar rotas publicas `/login`, `/register`, `/forgot-password`, `/reset-password`; envolver rotas existentes com `ProtectedRoute` |
-| `src/components/AppLayout.tsx` | Exibir nome do usuario logado no header (via `useAuth`); botao "Sair" funcional |
-| `src/components/AppSidebar.tsx` | Botao "Sair" chama `signOut` do contexto |
+- Importar os 3 hooks
+- Substituir `useState(initialUsers)` por dados de `useUserProfiles()` — manter `initialUsers` como fallback se array vazio
+- Substituir `useState(initialSquads)` por dados de `useTeams()` — manter `initialSquads` como fallback
+- Substituir `useState(initialGrupos)` por dados de `useGrupos()` — manter `initialGrupos` como fallback
+- Todos os handlers de criar/editar/deletar chamam as mutations dos hooks
+- Adicionar indicador de carregamento (loading state)
+- **Nenhuma alteracao de layout, menu ou funcionalidade existente**
+
+### Etapa 4 — Atualizar Hub.tsx e Monitoramento.tsx
+
+- Importar `useGrupos()` para substituir arrays estaticos `GRUPOS` e `mockData`
+- Manter dados mockados como fallback quando o banco estiver vazio
+- Calcular metricas dinamicamente dos dados reais
+- **Nenhuma alteracao visual**
 
 ---
 
 ### Detalhes tecnicos
 
-#### 1. AuthContext
+Os hooks usam `useQuery` com chaves `["user-profiles"]`, `["teams"]`, `["grupos"]`. Apos qualquer mutacao (create/update/delete), o cache e invalidado via `queryClient.invalidateQueries()`, forçando re-fetch automatico em todas as paginas que consomem o mesmo hook.
 
-- Usa `supabase.auth.onAuthStateChange` (configurado ANTES de `getSession`)
-- Expoe: `user`, `session`, `loading`, `signIn`, `signUp`, `signOut`, `resetPassword`
-- `signUp` recebe `full_name` nos metadados para o trigger `handle_new_user` usar
-- Google OAuth usa `skipBrowserRedirect: true` conforme configuracao existente no projeto
+O RLS do Supabase exige usuario autenticado. Com o cargo DIRETOR, o usuario `rowaizemarketing@gmail.com` tera acesso total de leitura e escrita via `can_manage_users()`.
 
-#### 2. ProtectedRoute
+### Arquivos a criar
 
-- Se `loading`, exibe spinner
-- Se nao ha `session`, redireciona para `/login`
-- Caso contrario, renderiza `children`
+- `src/hooks/useUserProfiles.ts`
+- `src/hooks/useTeams.ts`
+- `src/hooks/useGrupos.ts`
 
-#### 3. Pagina de Login
+### Arquivos a modificar
 
-- Campos: email, senha
-- Botao "Entrar"
-- Botao "Entrar com Google" (chama `supabase.auth.signInWithOAuth({ provider: 'google' })`)
-- Links: "Esqueci minha senha" -> `/forgot-password`, "Criar conta" -> `/register`
-- Visual: card centralizado com logo MONIGRU, cores do sistema (primary blue/purple gradient)
+- `src/pages/Configuracoes.tsx`
+- `src/pages/Hub.tsx`
+- `src/pages/Monitoramento.tsx`
 
-#### 4. Pagina de Registro
+### Dados a atualizar no banco
 
-- Campos: nome completo, email, senha, confirmar senha
-- Botao "Criar conta"
-- Ao registrar, `signUp` passa `full_name` nos `options.data` -> trigger cria `user_profiles` e `user_roles` automaticamente
-- Link: "Ja tenho conta" -> `/login`
-
-#### 5. Pagina Forgot Password
-
-- Campo: email
-- Botao "Enviar link"
-- Chama `supabase.auth.resetPasswordForEmail(email, { redirectTo: origin + '/reset-password' })`
-- Exibe mensagem de confirmacao
-
-#### 6. Pagina Reset Password
-
-- Detecta `type=recovery` na URL hash
-- Campos: nova senha, confirmar senha
-- Chama `supabase.auth.updateUser({ password })`
-- Redireciona para `/login` apos sucesso
-
-#### 7. App.tsx — rotas
-
-```text
-/login              -> Login (publica)
-/register           -> Register (publica)
-/forgot-password    -> ForgotPassword (publica)
-/reset-password     -> ResetPassword (publica)
-/                   -> ProtectedRoute > AppLayout > Index
-/hub                -> ProtectedRoute > AppLayout > Hub
-/monitoramento      -> ProtectedRoute > AppLayout > Monitoramento
-/configuracoes      -> ProtectedRoute > AppLayout > Configuracoes
-... demais rotas protegidas
-```
-
-#### 8. AppSidebar e AppLayout
-
-- O botao "Sair" na sidebar chama `signOut()` do AuthContext
-- O header exibe `user.user_metadata.full_name` ou o email do usuario logado
-- Nenhuma outra alteracao visual
-
-#### 9. Integracao com Configuracoes
-
-Nenhuma alteracao necessaria em Configuracoes.tsx neste momento. O trigger `handle_new_user` ja existente no banco garante que cada novo cadastro cria automaticamente:
-- Um registro em `user_profiles` (com `full_name` e `email`)
-- Um registro em `user_roles` (com cargo `OPERACIONAL`)
-
-Quando as secoes de Configuracoes forem conectadas ao Supabase (hooks `useUserProfiles`, `useTeams`, `useGrupos` — etapa futura), os novos usuarios apareccerao automaticamente nas listagens.
-
----
-
-### Pre-requisito: Google OAuth
-
-Para o login com Google funcionar, o usuario precisa configurar no Google Cloud Console e no painel do Supabase:
-1. Criar credenciais OAuth no Google Cloud Console
-2. Adicionar as redirect URLs do Supabase
-3. Habilitar o provider Google no Supabase Dashboard > Authentication > Providers
-
-Sera adicionado um comentario no codigo e uma orientacao no chat apos a implementacao.
-
----
-
-### Nenhuma migracao de banco necessaria
-
-O trigger `handle_new_user` e as tabelas `user_profiles` e `user_roles` ja existem e estao configurados corretamente.
+- `user_roles` — UPDATE role para `DIRETOR` onde user_id = `10c6d7c8-3fb5-4474-9442-2960e178bb0d`
 
