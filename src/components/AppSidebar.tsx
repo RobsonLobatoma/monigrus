@@ -9,6 +9,7 @@ import {
   LogOut,
   Shield,
 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -21,6 +22,7 @@ const navItems = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const { signOut } = useAuth();
 
   return (
     <aside className="fixed left-0 top-0 h-full w-64 flex flex-col bg-[hsl(var(--sidebar-background))] border-r border-[hsl(var(--sidebar-border))] z-40">
@@ -60,7 +62,10 @@ export function AppSidebar() {
 
       {/* Sair */}
       <div className="px-3 py-4 border-t border-[hsl(var(--sidebar-border))]">
-        <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] transition-all duration-150 w-full">
+        <button
+          onClick={signOut}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-accent-foreground))] transition-all duration-150 w-full"
+        >
           <LogOut size={18} className="opacity-70" />
           <span>Sair</span>
         </button>

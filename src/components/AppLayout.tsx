@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useState } from "react";
 import { AppSidebar } from "./AppSidebar";
+import { useAuth } from "@/contexts/AuthContext";
 import { Moon, Sun } from "lucide-react";
 
 interface AppLayoutProps {
@@ -7,6 +8,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const { user } = useAuth();
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -47,11 +49,17 @@ export function AppLayout({ children }: AppLayoutProps) {
 
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-sm font-semibold leading-tight text-foreground">Dr. Ricardo</p>
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">Diretor</p>
+              <p className="text-sm font-semibold leading-tight text-foreground">
+                {user?.user_metadata?.full_name || user?.email || "Usuário"}
+              </p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                {user?.email || ""}
+              </p>
             </div>
             <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-semibold text-sm">D</span>
+              <span className="text-primary-foreground font-semibold text-sm">
+                {(user?.user_metadata?.full_name || user?.email || "U").charAt(0).toUpperCase()}
+              </span>
             </div>
           </div>
         </header>
