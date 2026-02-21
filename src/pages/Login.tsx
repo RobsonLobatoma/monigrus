@@ -39,15 +39,33 @@ export default function Login() {
   }
 
   async function handleGoogleLogin() {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) {
+    try {
+      const isPreviewDomain =
+        window.location.hostname.includes("id-preview") ||
+        !window.location.hostname.includes("lovable.app");
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+          skipBrowserRedirect: isPreviewDomain,
+        },
+      });
+
+      if (error) throw error;
+
+      if (isPreviewDomain && data?.url) {
+        const oauthUrl = new URL(data.url);
+        if (oauthUrl.hostname !== "accounts.google.com") {
+          throw new Error("URL de autenticação inválida");
+        }
+        window.location.href = data.url;
+      }
+    } catch (error: any) {
       toast({
-        title: "Google OAuth não configurado",
+        title: "Erro ao conectar com Google",
         description:
-          "Ative o provedor Google em Authentication → Providers no painel do Supabase.",
+          error.message || "Ative o provedor Google em Authentication → Providers no painel do Supabase.",
         variant: "destructive",
       });
     }
