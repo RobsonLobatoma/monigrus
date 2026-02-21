@@ -691,6 +691,59 @@ export type Database = {
         }
         Relationships: []
       }
+      permissions: {
+        Row: {
+          code: string
+          created_at: string
+          description: string
+          id: string
+          module: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string
+          id?: string
+          module?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string
+          id?: string
+          module?: string
+        }
+        Relationships: []
+      }
+      role_permissions: {
+        Row: {
+          created_at: string
+          id: string
+          permission_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          permission_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          permission_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_permission_id_fkey"
+            columns: ["permission_id"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sectors: {
         Row: {
           created_at: string
@@ -932,6 +985,51 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_squad_history: {
+        Row: {
+          changed_by: string
+          created_at: string
+          id: string
+          new_team_id: string | null
+          old_team_id: string | null
+          reason: string
+          user_id: string
+        }
+        Insert: {
+          changed_by: string
+          created_at?: string
+          id?: string
+          new_team_id?: string | null
+          old_team_id?: string | null
+          reason?: string
+          user_id: string
+        }
+        Update: {
+          changed_by?: string
+          created_at?: string
+          id?: string
+          new_team_id?: string | null
+          old_team_id?: string | null
+          reason?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_squad_history_new_team_id_fkey"
+            columns: ["new_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_squad_history_old_team_id_fkey"
+            columns: ["old_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
