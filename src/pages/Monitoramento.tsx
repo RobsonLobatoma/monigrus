@@ -2,9 +2,11 @@ import { useState, useMemo } from "react";
 import { Shield, Search } from "lucide-react";
 import { useGrupos } from "@/hooks/useGrupos";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
+import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { Navigate } from "react-router-dom";
-type Satisfacao = "Ótimo" | "Regular" | "Ruim";
-type StatusType = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
+
+type Satisfacao = string;
+type StatusType = string;
 
 interface MonitoringRow {
   id: string;
@@ -28,10 +30,11 @@ const mockData: MonitoringRow[] = [
   { id: "mock-7", dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar." },
 ];
 
-const SAT_STYLE: Record<Satisfacao, { background: string; color: string }> = {
-  Ótimo:   { background: "#22c55e", color: "#ffffff" },
-  Regular: { background: "#facc15", color: "#000000" },
-  Ruim:    { background: "#ef4444", color: "#ffffff" },
+/* Fallback styles */
+const FALLBACK_SAT_STYLE: Record<string, { background: string; color: string }> = {
+  "Ótimo":   { background: "#22c55e", color: "#ffffff" },
+  "Regular": { background: "#facc15", color: "#000000" },
+  "Ruim":    { background: "#ef4444", color: "#ffffff" },
 };
 
 const thStyle: React.CSSProperties = {
@@ -70,38 +73,91 @@ const cellFill: React.CSSProperties = {
   fontSize: "13px",
 };
 
-function mapStatusToSatisfacao(status: string): Satisfacao {
-  if (status === "RESOLVIDO") return "Ótimo";
-  if (status === "CRÍTICO") return "Ruim";
-  return "Regular";
-}
-
 export default function Monitoramento() {
   const { data: dbGrupos } = useGrupos();
   const { role, teamId: currentTeamId, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
+
+  // Dynamic settings from DB
+  const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
+  const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
+  const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
+  const { data: keywordSettings = [] } = useMonitoringSettings("PALAVRA_CHAVE");
+
+  // Build dynamic color maps with fallback
+  const satStyleMap = useMemo(() => {
+    const map: Record<string, { background: string; color: string }> = { ...FALLBACK_SAT_STYLE };
+    satSettings.forEach((s) => {
+      if (s.color) {
+        map[s.label] = { background: s.color, color: isLightColor(s.color) ? "#000000" : "#ffffff" };
+      }
+    });
+    return map;
+  }, [satSettings]);
+
+  const statusStyleMap = useMemo(() => {
+    const map: Record<string, { background: string; color: string }> = {};
+    statusSettings.forEach((s) => {
+      if (s.color) {
+        map[s.label] = { background: s.color, color: isLightColor(s.color) ? "#000000" : "#ffffff" };
+      }
+    });
+    return map;
+  }, [statusSettings]);
+
+  // Score-to-satisfacao mapping
+  const scoreToSatisfacao = useMemo(() => {
+    if (scoreSettings.length === 0) {
+      return (score: number): string => {
+        if (score >= 71) return "Ótimo";
+        if (score >= 41) return "Regular";
+        return "Ruim";
+      };
+    }
+    return (score: number): string => {
+      for (const s of scoreSettings) {
+        if (s.min_value !== null && s.max_value !== null && score >= s.min_value && score <= s.max_value) {
+          return s.label;
+        }
+      }
+      return "Regular";
+    };
+  }, [scoreSettings]);
+
+  // Active keywords
+  const activeKeywords = useMemo(
+    () => keywordSettings.filter((k) => k.is_active).map((k) => k.label.toLowerCase()),
+    [keywordSettings]
+  );
 
   // OPERACIONAL não acessa Monitoramento
   if (!roleLoading && role === "OPERACIONAL") {
     return <Navigate to="/" replace />;
   }
 
+  function mapStatusToSatisfacao(status: string, score: number): string {
+    return scoreToSatisfacao(score);
+  }
+
   const data = useMemo((): MonitoringRow[] => {
     if (dbGrupos && dbGrupos.length > 0) {
-      return dbGrupos.map((g) => ({
-        id: g.id,
-        dataHora: g.ultima_atividade ?? "—",
-        grupo: g.nome,
-        gestorTrafego: g.gestor ?? "—",
-        squad: "—",
-        satisfacao: mapStatusToSatisfacao(g.status),
-        score: g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50,
-        status: (g.status as StatusType) ?? "PENDENTE",
-        descricao: `Grupo: ${g.nome}`,
-      }));
+      return dbGrupos.map((g) => {
+        const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
+        return {
+          id: g.id,
+          dataHora: g.ultima_atividade ?? "—",
+          grupo: g.nome,
+          gestorTrafego: g.gestor ?? "—",
+          squad: "—",
+          satisfacao: scoreToSatisfacao(score),
+          score,
+          status: g.status ?? "PENDENTE",
+          descricao: `Grupo: ${g.nome}`,
+        };
+      });
     }
     return mockData;
-  }, [dbGrupos]);
+  }, [dbGrupos, scoreToSatisfacao]);
 
   const filtered = data.filter(
     (row) =>
@@ -110,6 +166,26 @@ export default function Monitoramento() {
       row.squad.toLowerCase().includes(search.toLowerCase()) ||
       row.status.toLowerCase().includes(search.toLowerCase())
   );
+
+  // Highlight keywords in description
+  function renderDescricao(text: string) {
+    if (activeKeywords.length === 0) return `"${text}"`;
+    const regex = new RegExp(`(${activeKeywords.map(escapeRegex).join("|")})`, "gi");
+    const parts = text.split(regex);
+    return (
+      <>
+        "
+        {parts.map((part, i) =>
+          activeKeywords.includes(part.toLowerCase()) ? (
+            <span key={i} className="font-bold text-primary">{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+        "
+      </>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -171,7 +247,8 @@ export default function Monitoramento() {
               </tr>
             ) : (
               filtered.map((row, idx) => {
-                const satStyle = SAT_STYLE[row.satisfacao];
+                const satStyle = satStyleMap[row.satisfacao] ?? { background: "#888", color: "#fff" };
+                const stsStyle = statusStyleMap[row.status];
                 const isLast = idx === filtered.length - 1;
                 const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
 
@@ -208,21 +285,38 @@ export default function Monitoramento() {
                       </div>
                     </td>
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        fontSize: "11px",
-                        fontWeight: 500,
-                        letterSpacing: "0.04em",
-                        color: "#111827",
-                        whiteSpace: "nowrap",
-                      }}>
-                        {row.status}
-                      </span>
+                      {stsStyle ? (
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          letterSpacing: "0.04em",
+                          color: stsStyle.color,
+                          background: stsStyle.background,
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {row.status}
+                        </span>
+                      ) : (
+                        <span style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          letterSpacing: "0.04em",
+                          color: "#111827",
+                          whiteSpace: "nowrap",
+                        }}>
+                          {row.status}
+                        </span>
+                      )}
                     </td>
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        "{row.descricao}"
+                        {renderDescricao(row.descricao)}
                       </p>
                     </td>
                   </tr>
@@ -239,4 +333,17 @@ export default function Monitoramento() {
       </div>
     </div>
   );
+}
+
+/* ─── Helpers ─── */
+function isLightColor(hex: string): boolean {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
