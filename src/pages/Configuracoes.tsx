@@ -8,6 +8,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useUserProfiles, useUpdateUserProfile, useDeleteUserProfile } from "@/hooks/useUserProfiles";
+import MonitoringSettingsTab from "@/components/MonitoringSettingsTab";
 import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from "@/hooks/useTeams";
 import { useGrupos, useCreateGrupo, useUpdateGrupo, useDeleteGrupo } from "@/hooks/useGrupos";
 import { useCurrentUserRole, type AppRole } from "@/hooks/useCurrentUserRole";
@@ -378,6 +379,7 @@ export default function Configuracoes() {
             { value: "gestao-squads",         icon: <LayoutGrid size={15} />, label: "Gestão de Squads" },
             { value: "gestao-grupos",         icon: <Hash size={15} />,       label: "Gestão de Grupos" },
             { value: "hierarquia-permissoes", icon: <Shield size={15} />,     label: "Hierarquia & Permissões" },
+            { value: "monitoramento-config", icon: <Monitor size={15} />,    label: "Monitoramento" },
           ].map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}
               className="flex items-center gap-2 rounded-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none">
@@ -655,6 +657,11 @@ export default function Configuracoes() {
               ))}
             </div>
           </div>
+        </TabsContent>
+
+        {/* ════ Monitoramento Config ════ */}
+        <TabsContent value="monitoramento-config" className="mt-6">
+          <MonitoringSettingsTab />
         </TabsContent>
       </Tabs>
 

@@ -579,6 +579,45 @@ export type Database = {
           },
         ]
       }
+      monitoring_settings: {
+        Row: {
+          category: string
+          color: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          label: string
+          max_value: number | null
+          min_value: number | null
+          sort_order: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          max_value?: number | null
+          min_value?: number | null
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          max_value?: number | null
+          min_value?: number | null
+          sort_order?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
