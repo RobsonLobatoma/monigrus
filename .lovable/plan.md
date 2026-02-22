@@ -1,156 +1,104 @@
 
 
-## Sistema Enterprise RBAC - Plano de Implementacao
+## Plano: Sessoes de Configuracao para Monitoramento
 
-### Resumo
+### Objetivo
 
-Implementar controle de acesso baseado em cargos (RBAC) no frontend e backend, com novas tabelas para permissoes granulares e historico de squads, um hook central `useCurrentUserRole` para determinar o cargo do usuario logado, e filtragem de visibilidade em todas as telas -- sem alterar nenhum layout, menu ou funcionalidade existente.
+Adicionar 4 novas sub-secoes dentro da aba "Gestao de Hierarquia e Acessos" (pagina Configuracoes) para gerenciar manualmente os valores utilizados nas colunas do Monitoramento:
 
----
+1. **Palavras Chave** - palavras para monitorar na coluna "Descricao"
+2. **Satisfacao** - opcoes de satisfacao (ex: Otimo, Regular, Ruim)
+3. **Score** - faixas/regras de score
+4. **Status** - opcoes de status (ex: RESOLVIDO, PENDENTE, CRITICO)
 
-### Etapa 1 -- Novas tabelas no banco de dados (migracao)
+Cada secao tera funcionalidade completa de criar, editar, remover e salvar.
 
-Criar 3 novas tabelas sem alterar nenhuma tabela existente:
+### Etapa 1 -- Nova tabela no banco de dados
 
-| Tabela | Descricao |
-|---|---|
-| `permissions` | Lista de codigos de permissao (ex: `CREATE_USER`, `EDIT_SQUAD`, `VIEW_DASHBOARD_GLOBAL`) |
-| `role_permissions` | Mapeamento entre `app_role` e permissoes |
-| `user_squad_history` | Historico de movimentacao de usuarios entre squads |
+Criar uma unica tabela `monitoring_settings` para armazenar todas as configuracoes:
 
 ```text
-permissions:
-  id (uuid PK), code (text UNIQUE), description (text), module (text), created_at
-
-role_permissions:
-  id (uuid PK), role (app_role), permission_id (uuid FK -> permissions.id), created_at
-  UNIQUE(role, permission_id)
-
-user_squad_history:
-  id (uuid PK), user_id (uuid), old_team_id (uuid NULL), new_team_id (uuid NULL),
-  changed_by (uuid), reason (text), created_at
+monitoring_settings:
+  id (uuid PK, default gen_random_uuid())
+  category (text NOT NULL) -- 'PALAVRA_CHAVE' | 'SATISFACAO' | 'SCORE' | 'STATUS'
+  label (text NOT NULL) -- o valor exibido (ex: "Otimo", "PENDENTE", "reclamacao")
+  color (text DEFAULT '') -- cor opcional para badges (hex)
+  min_value (integer NULL) -- para Score: valor minimo da faixa
+  max_value (integer NULL) -- para Score: valor maximo da faixa
+  is_active (boolean DEFAULT true)
+  sort_order (integer DEFAULT 0)
+  created_at (timestamptz DEFAULT now())
+  updated_at (timestamptz DEFAULT now())
 ```
 
 RLS: leitura para autenticados, escrita para `can_manage_users()`.
 
-Seed inicial com as permissoes da matriz de acesso:
+Seed inicial com os valores atualmente hardcoded no sistema:
+- Satisfacao: Otimo, Regular, Ruim
+- Status: RESOLVIDO, PENDENTE, CRITICO
+- Score: 0-40 (Ruim), 41-70 (Regular), 71-100 (Otimo)
+- Palavras Chave: "reclamou", "sem retorno", "confirmou" (exemplos)
 
-| Codigo | Diretor | Gerente | Supervisor | Operacional |
-|---|---|---|---|---|
-| CREATE_USER | sim | sim | nao | nao |
-| EDIT_USER | sim | sim | squad | nao |
-| CREATE_SQUAD | sim | sim | nao | nao |
-| EDIT_SQUAD | sim | sim | proprio | nao |
-| MANAGE_PERMISSIONS | sim | nao | nao | nao |
-| VIEW_DASHBOARD_GLOBAL | sim | sim | nao | nao |
-| VIEW_DASHBOARD_SQUAD | sim | sim | sim | nao |
-| EXECUTE_TASKS | nao | nao | gestao | sim |
-| VIEW_MONITORAMENTO | sim | sim | sim | nao |
-| VIEW_HUB | sim | nao | sim | sim |
-| VIEW_ANOMALIAS | sim | sim | nao | nao |
-| VIEW_CONEXOES | sim | sim | nao | nao |
-| VIEW_CONFIGURACOES | sim | sim | sim | sim |
+### Etapa 2 -- Hook useMonitoringSettings
 
-### Etapa 2 -- Hook useCurrentUserRole
+Criar `src/hooks/useMonitoringSettings.ts`:
+- `useMonitoringSettings(category?)` - busca settings filtrados por categoria
+- `useCreateMonitoringSetting()` - mutation para criar
+- `useUpdateMonitoringSetting()` - mutation para editar
+- `useDeleteMonitoringSetting()` - mutation para remover
+- React Query com invalidacao automatica
 
-Criar `src/hooks/useCurrentUserRole.ts`:
-- Busca o cargo do usuario logado via `user_roles` + `useAuth()`
-- Retorna `{ role, level, loading, canManage, hasPermission }`
-- `level`: DIRETOR=1, GERENTE=2, SUPERVISOR=3, OPERACIONAL=4
-- `canManage(targetLevel)`: verifica se pode gerenciar cargo abaixo
-- `hasPermission(code)`: consulta `role_permissions` via cache
+### Etapa 3 -- Nova aba em Configuracoes.tsx
 
-### Etapa 3 -- Hook usePermissions
+Adicionar uma nova aba **"Monitoramento"** ao TabsList existente (apos "Hierarquia & Permissoes"), com icone `Monitor`.
 
-Criar `src/hooks/usePermissions.ts`:
-- `usePermissions()`: busca todas as permissoes + role_permissions
-- `useCheckPermission(code)`: retorna boolean para o usuario atual
-- Usa React Query com cache para evitar re-fetches
+Dentro da aba, 4 secoes em cards:
 
-### Etapa 4 -- Hook useSquadHistory
+**Card 1 - Palavras Chave:**
+- Tabela com colunas: PALAVRA, STATUS (ativo/inativo), ACOES
+- Botao "Nova Palavra Chave" que abre input inline ou modal simples
+- Botoes editar/remover por linha
 
-Criar `src/hooks/useSquadHistory.ts`:
-- `useSquadHistory(userId?)`: busca historico de movimentacao
-- `useLogSquadChange()`: mutation para registrar mudanca de squad
+**Card 2 - Satisfacao:**
+- Tabela com colunas: LABEL, COR, ACOES
+- Preview visual do badge com a cor selecionada
+- Botao "Nova Opcao"
 
-### Etapa 5 -- Configuracoes.tsx (modificacao sem alterar layout)
+**Card 3 - Score:**
+- Tabela com colunas: FAIXA (min-max), LABEL, COR, ACOES
+- Permite definir faixas de score com limites numericos
 
-Alteracoes internas, mantendo todos os elementos visuais identicos:
+**Card 4 - Status:**
+- Tabela com colunas: LABEL, COR, ACOES
+- Preview visual do badge
 
-**Usuarios & Cargos:**
-- Dropdown de "Cargo" no modal de criacao: filtrar opcoes para mostrar apenas cargos abaixo do nivel do usuario logado
-- Validacao: `if (cargoNovoLevel <= cargoAtualLevel) BLOQUEAR`
-- Botoes de editar/excluir: ocultos se usuario nao tem permissao
+Cada card segue o mesmo padrao visual existente (rounded-xl border bg-card).
 
-**Gestao de Squads:**
-- Supervisor: filtrar dados por squad se o usuario logado for SUPERVISOR
-- Botao "Novo Squad": visivel apenas para DIRETOR e GERENTE
-- Botoes editar/excluir: SUPERVISOR so edita o proprio squad
+### Etapa 4 -- Integracao com Monitoramento.tsx
 
-**Gestao de Grupos:**
-- SUPERVISOR ve apenas grupos do seu squad
-- OPERACIONAL ve apenas grupos aos quais esta vinculado
+Importar `useMonitoringSettings` no Monitoramento para:
+- Usar as cores dinamicas de Satisfacao e Status em vez de constantes hardcoded
+- Destacar palavras chave encontradas na coluna Descricao (negrito ou cor)
+- Calcular Satisfacao com base nas faixas de Score configuradas
 
-**Hierarquia & Permissoes:**
-- Matriz de Acessos: checkboxes editaveis apenas para DIRETOR (atualmente ja readonly para outros)
-- GERENTE: nao ve permissoes do DIRETOR
+### Detalhes Tecnicos
 
-**Visao Geral:**
-- Cards de metricas: contagem dinamica baseada nos dados visiveis ao cargo do usuario
-
-### Etapa 6 -- AppSidebar.tsx (modificacao sem alterar layout)
-
-- Importar `useCurrentUserRole`
-- Filtrar `navItems` baseado nas permissoes do usuario:
-  - OPERACIONAL: nao ve Anomalias, Conexoes, Monitoramento (global)
-  - SUPERVISOR: nao ve Anomalias, Conexoes
-  - GERENTE: nao ve Hub
-  - DIRETOR: ve tudo
-- Itens de menu mantidos no array original, apenas filtrados via `.filter()`
-
-### Etapa 7 -- Monitoramento.tsx (modificacao sem alterar layout)
-
-- Importar `useCurrentUserRole`
-- SUPERVISOR: filtrar `data` para mostrar apenas grupos do seu squad (via `team_id`)
-- OPERACIONAL: redirecionar para `/` (nao tem acesso)
-- DIRETOR/GERENTE: sem alteracao (ve tudo)
-
-### Etapa 8 -- Hub.tsx (modificacao sem alterar layout)
-
-- Importar `useCurrentUserRole`
-- GERENTE: redirecionar para `/`
-- SUPERVISOR: filtrar por squad
-- Greeting dinamico: usar nome real do usuario logado em vez de "Dr. Ricardo"
-
----
-
-### Arquivos a criar
-
+**Arquivos a criar:**
 | Arquivo | Descricao |
 |---|---|
-| `src/hooks/useCurrentUserRole.ts` | Hook central de cargo e permissoes do usuario logado |
-| `src/hooks/usePermissions.ts` | Hook para consulta de permissoes granulares |
-| `src/hooks/useSquadHistory.ts` | Hook para historico de movimentacao de squads |
+| `src/hooks/useMonitoringSettings.ts` | Hook CRUD para monitoring_settings |
 
-### Arquivos a modificar
-
+**Arquivos a modificar:**
 | Arquivo | O que muda |
 |---|---|
-| `src/pages/Configuracoes.tsx` | Validacao de cargo na criacao, filtragem por permissao, registro de historico |
-| `src/pages/Hub.tsx` | Filtragem por cargo, greeting dinamico |
-| `src/pages/Monitoramento.tsx` | Filtragem por squad para supervisor |
-| `src/components/AppSidebar.tsx` | Filtragem de itens de menu por permissao |
+| `src/pages/Configuracoes.tsx` | Nova aba "Monitoramento" com 4 cards CRUD |
+| `src/pages/Monitoramento.tsx` | Usar cores e regras dinamicas do banco |
 
-### Migracao de banco de dados
+**Migracao:**
+- Uma unica migracao SQL criando a tabela `monitoring_settings` + seed + RLS
 
-Uma unica migracao SQL criando as 3 novas tabelas + seed de permissoes + RLS policies.
-
-### Garantias
-
-- Zero alteracao em tabelas existentes (`user_roles`, `teams`, `grupos`, `user_profiles`)
-- Zero alteracao de layout visual
-- Zero remocao de funcionalidades ou menus
-- Toda logica nova e aditiva e desacoplada
-- Fallback para dados mockados mantido
-- Backward-compatible: se o hook de role nao carregar, comportamento padrao e mantido
-
+**Garantias:**
+- Zero alteracao nas abas existentes
+- Zero remocao de funcionalidades
+- Zero alteracao de layout
+- Fallback mantido: se a tabela estiver vazia, valores hardcoded continuam funcionando
