@@ -12,6 +12,7 @@ import Hub from "./pages/Hub";
 import Monitoramento from "./pages/Monitoramento";
 import Configuracoes from "./pages/Configuracoes";
 import NotFound from "./pages/NotFound";
+import Squads from "./pages/Squads";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/anomalias" element={<ProtectedRoute><AppLayout><Anomalias /></AppLayout></ProtectedRoute>} />
             <Route path="/monitoramento" element={<ProtectedRoute><AppLayout><Monitoramento /></AppLayout></ProtectedRoute>} />
             <Route path="/conexoes" element={<ProtectedRoute><AppLayout><Conexoes /></AppLayout></ProtectedRoute>} />
+            <Route path="/squads" element={<ProtectedRoute><AppLayout><Squads /></AppLayout></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><AppLayout><Configuracoes /></AppLayout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

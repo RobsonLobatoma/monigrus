@@ -524,6 +524,7 @@ export type Database = {
           ativo: boolean
           created_at: string
           gestor: string | null
+          gestor_id: string | null
           id: string
           mensagens: number
           nome: string
@@ -538,6 +539,7 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           gestor?: string | null
+          gestor_id?: string | null
           id?: string
           mensagens?: number
           nome: string
@@ -552,6 +554,7 @@ export type Database = {
           ativo?: boolean
           created_at?: string
           gestor?: string | null
+          gestor_id?: string | null
           id?: string
           mensagens?: number
           nome?: string
@@ -867,6 +870,7 @@ export type Database = {
       }
       teams: {
         Row: {
+          capacidade_maxima: number
           created_at: string
           gestores: string[]
           id: string
@@ -876,6 +880,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          capacidade_maxima?: number
           created_at?: string
           gestores?: string[]
           id?: string
@@ -885,6 +890,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          capacidade_maxima?: number
           created_at?: string
           gestores?: string[]
           id?: string
@@ -955,6 +961,7 @@ export type Database = {
       }
       user_profiles: {
         Row: {
+          capacidade_maxima_gestor: number
           created_at: string
           email: string
           full_name: string
@@ -967,6 +974,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          capacidade_maxima_gestor?: number
           created_at?: string
           email: string
           full_name: string
@@ -979,6 +987,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          capacidade_maxima_gestor?: number
           created_at?: string
           email?: string
           full_name?: string

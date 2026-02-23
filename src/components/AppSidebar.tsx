@@ -8,6 +8,7 @@ import {
   Settings,
   LogOut,
   Shield,
+  LayoutGrid,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
@@ -15,6 +16,7 @@ import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, permissionCode: null },
   { title: "Hub do Colaborador", url: "/hub", icon: Users, permissionCode: "VIEW_HUB" },
+  { title: "Squads", url: "/squads", icon: LayoutGrid, permissionCode: "VIEW_SQUADS" },
   { title: "Anomalias", url: "/anomalias", icon: AlertTriangle, permissionCode: "VIEW_ANOMALIAS" },
   { title: "Monitoramento", url: "/monitoramento", icon: Monitor, permissionCode: "VIEW_MONITORAMENTO" },
   { title: "Conexões", url: "/conexoes", icon: Link2, permissionCode: "VIEW_CONEXOES" },
