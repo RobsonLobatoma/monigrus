@@ -15,6 +15,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import Conexoes from "./pages/Conexoes";
 
 const queryClient = new QueryClient();
 
@@ -37,7 +38,7 @@ const App = () => (
             <Route path="/hub" element={<ProtectedRoute><AppLayout><Hub /></AppLayout></ProtectedRoute>} />
             <Route path="/anomalias" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
             <Route path="/monitoramento" element={<ProtectedRoute><AppLayout><Monitoramento /></AppLayout></ProtectedRoute>} />
-            <Route path="/conexoes" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
+            <Route path="/conexoes" element={<ProtectedRoute><AppLayout><Conexoes /></AppLayout></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><AppLayout><Configuracoes /></AppLayout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
