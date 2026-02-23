@@ -307,7 +307,7 @@ export default function Monitoramento() {
                           fontSize: "11px",
                           fontWeight: 500,
                           letterSpacing: "0.04em",
-                          color: "#111827",
+                          color: "hsl(var(--foreground))",
                           whiteSpace: "nowrap",
                         }}>
                           {row.status}

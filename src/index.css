@@ -113,4 +113,11 @@
     @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
+
+  /* Native select/option dark mode support */
+  .dark select,
+  .dark option {
+    background-color: hsl(var(--card));
+    color: hsl(var(--foreground));
+  }
 }
