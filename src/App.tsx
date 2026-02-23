@@ -7,6 +7,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AppLayout } from "./components/AppLayout";
 import Index from "./pages/Index";
+import Anomalias from "./pages/Anomalias";
 import Hub from "./pages/Hub";
 import Monitoramento from "./pages/Monitoramento";
 import Configuracoes from "./pages/Configuracoes";
@@ -36,7 +37,7 @@ const App = () => (
             {/* Protected routes */}
             <Route path="/" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
             <Route path="/hub" element={<ProtectedRoute><AppLayout><Hub /></AppLayout></ProtectedRoute>} />
-            <Route path="/anomalias" element={<ProtectedRoute><AppLayout><Index /></AppLayout></ProtectedRoute>} />
+            <Route path="/anomalias" element={<ProtectedRoute><AppLayout><Anomalias /></AppLayout></ProtectedRoute>} />
             <Route path="/monitoramento" element={<ProtectedRoute><AppLayout><Monitoramento /></AppLayout></ProtectedRoute>} />
             <Route path="/conexoes" element={<ProtectedRoute><AppLayout><Conexoes /></AppLayout></ProtectedRoute>} />
             <Route path="/configuracoes" element={<ProtectedRoute><AppLayout><Configuracoes /></AppLayout></ProtectedRoute>} />
