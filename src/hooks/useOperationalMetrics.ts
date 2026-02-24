@@ -98,7 +98,7 @@ export function useOperationalMetrics(filterTeamId?: string | null) {
 
     // Squad metrics
     const squadMetrics: SquadMetrics[] = allTeams.map((team) => {
-      const capMax = (team as any)?.capacidade_maxima ?? 110;
+      const capMax = team.capacidade_maxima ?? 110;
       const squadGrupos = allGrupos.filter((g) => g.team_id === team.id);
       const ativos = squadGrupos.filter((g) => g.ativo);
       const criticos = squadGrupos.filter((g) => g.status === "CRÍTICO");

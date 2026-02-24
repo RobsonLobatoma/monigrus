@@ -31,7 +31,7 @@ const CARGO_MAP: Record<string, string> = {
 const ROLE_LEVEL: Record<string, number> = {
   DIRETOR: 1, GERENTE: 2, SUPERVISOR: 3, OPERACIONAL: 4,
 };
-const SQUAD_OPTIONS = ["MASTER", "ELITE", "SQT1", "SQT2", "SQT3"];
+// SQUAD_OPTIONS now derived from dbTeams dynamically
 const initialUsers = [
   { id: "mock-1", name: "Dr. Ricardo",    email: "diretor@sistema.com", cargo: "DIRETOR",          squad: "MASTER" },
   { id: "mock-2", name: "Ana Maria",      email: "gerente@sistema.com", cargo: "GERENTE",           squad: "ELITE"  },
@@ -135,34 +135,41 @@ export default function Configuracoes() {
   }, [dbUsers]);
 
   const squads = useMemo(() => {
-    if (dbTeams && dbTeams.length > 0) {
-      return dbTeams.map((t) => ({
-        id: t.id,
-        name: t.name,
-        supervisor: t.supervisor ?? "—",
-        supervisorInitial: (t.supervisor ?? "—").charAt(0).toUpperCase(),
-        gestores: t.gestores ?? [],
-      }));
-    }
-    return initialSquads;
+    if (!dbTeams) return [];
+    return dbTeams.map((t) => ({
+      id: t.id,
+      name: t.name,
+      supervisor: t.supervisor ?? "—",
+      supervisorInitial: (t.supervisor ?? "—").charAt(0).toUpperCase(),
+      gestores: t.gestores ?? [],
+    }));
   }, [dbTeams]);
 
-  const grupos = useMemo((): Grupo[] => {
-    if (dbGrupos && dbGrupos.length > 0) {
-      return dbGrupos.map((g) => ({
-        id: g.id,
-        nome: g.nome,
-        uuid: `UUID: ${g.id.slice(0, 8)}`,
-        squad: "—",
-        gestor: g.gestor ?? "—",
-        sla: (g.sla as GrupoSLA) ?? "DENTRO DO SLA",
-        status: (g.status as GrupoStatus) ?? "PENDENTE",
-        mensagens: g.mensagens ?? 0,
-        ultimaAtividade: g.ultima_atividade ?? "—",
-      }));
-    }
-    return initialGrupos;
-  }, [dbGrupos]);
+  // Dynamic squad options from real DB data
+  const squadOptions = useMemo(() => squads.map((s) => ({ id: s.id, name: s.name })), [squads]);
+
+  // Build a team_id -> name map for grupo display
+  const teamNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (dbTeams ?? []).forEach((t) => { map[t.id] = t.name; });
+    return map;
+  }, [dbTeams]);
+
+  const grupos = useMemo((): (Grupo & { teamId: string | null })[] => {
+    if (!dbGrupos) return [];
+    return dbGrupos.map((g) => ({
+      id: g.id,
+      nome: g.nome,
+      uuid: `UUID: ${g.id.slice(0, 8)}`,
+      squad: g.team_id ? (teamNameMap[g.team_id] ?? "—") : "—",
+      teamId: g.team_id ?? null,
+      gestor: g.gestor ?? "—",
+      sla: (g.sla as GrupoSLA) ?? "DENTRO DO SLA",
+      status: (g.status as GrupoStatus) ?? "PENDENTE",
+      mensagens: g.mensagens ?? 0,
+      ultimaAtividade: g.ultima_atividade ?? "—",
+    }));
+  }, [dbGrupos, teamNameMap]);
 
   /* Usuários */
   const [search, setSearch]       = useState("");
@@ -257,21 +264,21 @@ export default function Configuracoes() {
   const [grupoModal, setGrupoModal]       = useState(false);
   const [slaTime, setSlaTime]             = useState("09:30");
   const [newGrupoNome, setNewGrupoNome]   = useState("");
-  const [newGrupoSquad, setNewGrupoSquad] = useState("SQT1");
-  const [newGrupoGestor, setNewGrupoGestor] = useState("Seu Madruga");
+  const [newGrupoSquad, setNewGrupoSquad] = useState("");
+  const [newGrupoGestor, setNewGrupoGestor] = useState("");
 
   /* Edição de Grupo */
   const [editGrupoModal, setEditGrupoModal] = useState(false);
   const [editGrupoData, setEditGrupoData]   = useState<Grupo | null>(null);
   const [editGrupoNome, setEditGrupoNome]   = useState("");
-  const [editGrupoSquad, setEditGrupoSquad] = useState("SQT1");
-  const [editGrupoGestor, setEditGrupoGestor] = useState("Seu Madruga");
+  const [editGrupoSquad, setEditGrupoSquad] = useState("");
+  const [editGrupoGestor, setEditGrupoGestor] = useState("");
   const [editGrupoSla, setEditGrupoSla]     = useState<GrupoSLA>("DENTRO DO SLA");
 
-  const openEditGrupoModal = (g: Grupo) => {
+  const openEditGrupoModal = (g: Grupo & { teamId: string | null }) => {
     setEditGrupoData(g);
     setEditGrupoNome(g.nome);
-    setEditGrupoSquad(g.squad);
+    setEditGrupoSquad(g.teamId ?? "");
     setEditGrupoGestor(g.gestor);
     setEditGrupoSla(g.sla);
     setEditGrupoModal(true);
@@ -285,6 +292,7 @@ export default function Configuracoes() {
         nome: editGrupoNome.trim(),
         gestor: editGrupoGestor,
         sla: editGrupoSla,
+        team_id: editGrupoSquad || null,
       });
     }
     setEditGrupoModal(false);
@@ -321,12 +329,13 @@ export default function Configuracoes() {
     if (!newGrupoNome.trim()) return;
     createGrupoMutation.mutate({
       nome: newGrupoNome.trim(),
-      gestor: newGrupoGestor,
+      gestor: newGrupoGestor || null,
       sla: "DENTRO DO SLA",
       status: "PENDENTE",
       mensagens: 0,
+      team_id: newGrupoSquad || null,
     });
-    setNewGrupoNome(""); setNewGrupoSquad("SQT1"); setNewGrupoGestor("Seu Madruga"); setGrupoModal(false);
+    setNewGrupoNome(""); setNewGrupoSquad(""); setNewGrupoGestor(""); setGrupoModal(false);
   };
 
   const handleDeleteUser = (id: string) => {
@@ -694,7 +703,7 @@ export default function Configuracoes() {
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Squad Destino</label>
                   <select value={newSquad} onChange={(e) => setNewSquad(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    {SQUAD_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                    {squadOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -751,7 +760,7 @@ export default function Configuracoes() {
                   onChange={(e) => setEditSquad(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 >
-                  {SQUAD_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {squadOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
             </div>
@@ -868,7 +877,7 @@ export default function Configuracoes() {
                   onChange={(e) => setEditGrupoSquad(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 >
-                  {["SQT1","SQT2","SQT3","MASTER","ELITE"].map((s) => <option key={s} value={s}>{s}</option>)}
+                  {squadOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               <div>
@@ -920,8 +929,9 @@ export default function Configuracoes() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Atribuir ao Squad</label>
-                  <select value={newGrupoSquad} onChange={(e) => setNewGrupoSquad(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    {SQUAD_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+                   <select value={newGrupoSquad} onChange={(e) => setNewGrupoSquad(e.target.value)} className="w-full px-4 py-2.5 rounded-lg border border-border bg-muted/40 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <option value="">Selecione...</option>
+                    {squadOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
