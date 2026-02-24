@@ -247,8 +247,14 @@ Deno.serve(async (req) => {
         const apiResult = await withRetry(() => adapter.createInstance(instanceName, config));
 
         // Validate API response before saving to DB
-        if (apiResult?.status === 404 || apiResult?.error) {
-          throw new Error(`Evolution API error: ${apiResult?.error || "Not Found"} - ${JSON.stringify(apiResult?.response || {})}`);
+        const errMsg = apiResult?.error || apiResult?.message;
+        const msgArr = apiResult?.message;
+        const isAlreadyInUse = Array.isArray(msgArr)
+          ? msgArr.some((m: string) => typeof m === "string" && m.includes("already in use"))
+          : typeof msgArr === "string" && msgArr.includes("already in use");
+
+        if (!isAlreadyInUse && (apiResult?.status === 404 || apiResult?.status === 403 || errMsg)) {
+          throw new Error(`Evolution API error: ${errMsg || "Unknown"} - ${JSON.stringify(apiResult?.response || apiResult?.message || {})}`);
         }
 
         const { data } = await serviceClient
