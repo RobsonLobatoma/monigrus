@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
-import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups } from "@/hooks/useWhatsAppInstances";
+import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
 import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2 } from "lucide-react";
 
@@ -40,6 +40,18 @@ export default function Conexoes() {
   const disconnectInstance = useDisconnectInstance();
   const getQrCode = useGetQrCode();
   const getGroups = useGetGroups();
+  const syncGroups = useSyncGroups();
+
+  const handleSyncGroups = (instanceId: string) => {
+    syncGroups.mutate(instanceId, {
+      onSuccess: (data: any) => {
+        toast({ title: "Grupos sincronizados", description: `${data?.synced || 0} grupos mapeados com sucesso.` });
+      },
+      onError: (err: any) => {
+        toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
+      },
+    });
+  };
 
   const handleCreateInstance = () => {
     if (!newInstanceName.trim()) return;
@@ -179,6 +191,9 @@ export default function Conexoes() {
                             </Button>
                             <Button size="icon" variant="ghost" title="Grupos" onClick={() => handleGetGroups(inst.id, inst.instance_name)} disabled={getGroups.isPending}>
                               <Users className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" title="Sincronizar Grupos" onClick={() => handleSyncGroups(inst.id)} disabled={syncGroups.isPending}>
+                              <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
                             </Button>
                             <Button size="icon" variant="ghost" title="Remover" onClick={() => deleteInstance.mutate(inst.id, { onSuccess: () => toast({ title: "Instância removida" }) })} disabled={deleteInstance.isPending}>
                               <Trash2 className="w-4 h-4 text-destructive" />
