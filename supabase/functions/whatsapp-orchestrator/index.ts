@@ -10,15 +10,35 @@ interface ProviderConfig { base_url: string; api_key: string; }
 const FETCH_TIMEOUT = 45000;
 
 async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const urlStr = String(url);
   try {
-    return await fetch(url, init);
+    // Use redirect: "manual" to prevent Deno from auto-following HTTPS redirects
+    const res = await fetch(url, { ...init, redirect: "manual" });
+
+    // Intercept redirects that go back to HTTPS (e.g. Coolify/Nginx HTTP→HTTPS redirect)
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (location) {
+        console.log(`[safeFetch] Redirect ${res.status} detected: ${urlStr} → ${location}`);
+        if (location.startsWith("https://") && urlStr.startsWith("http://")) {
+          const httpLocation = location.replace("https://", "http://");
+          console.log(`[safeFetch] Intercepted HTTPS redirect, forcing HTTP: ${httpLocation}`);
+          const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
+          return await fetch(httpLocation, retryInit);
+        }
+        // For non-HTTPS redirects, follow normally
+        const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
+        return await fetch(location, retryInit);
+      }
+    }
+
+    return res;
   } catch (err: any) {
     const msg = err?.message || "";
     if (msg.includes("certificate") || msg.includes("UnknownIssuer")) {
-      const httpUrl = String(url).replace("https://", "http://");
+      const httpUrl = urlStr.replace("https://", "http://");
       console.log(`[safeFetch] TLS error, falling back to HTTP: ${httpUrl}`);
-      // Create a fresh signal so the retry gets the full timeout budget
-      const retryInit = init ? { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT) } : undefined;
+      const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
       return await fetch(httpUrl, retryInit);
     }
     throw err;
@@ -56,8 +76,9 @@ const evo = {
     return { messageId: d?.key?.id, status: "sent" };
   },
   getGroups: async (n: string, c: ProviderConfig) => {
-    console.log(`[evo.getGroups] Fetching groups for instance: ${n}, url: ${c.base_url}/group/fetchAllGroups/${n}`);
-    const d = await safeJson(await safeFetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c), signal: sig() }));
+    const groupUrl = `${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`;
+    console.log(`[evo.getGroups] URL: ${groupUrl}, protocol: ${new URL(groupUrl).protocol}`);
+    const d = await safeJson(await safeFetch(groupUrl, { headers: authOnly(c), signal: sig() }));
     console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
     return { groups: Array.isArray(d) ? d : [] };
   },
