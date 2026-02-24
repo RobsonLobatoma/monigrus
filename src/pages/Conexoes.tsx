@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
 import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search } from "lucide-react";
+import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -19,6 +21,11 @@ const statusColors: Record<string, string> = {
   disconnected: "bg-muted text-muted-foreground",
   error: "bg-destructive/20 text-destructive border-destructive/30",
 };
+
+const TAG_COLORS = [
+  "#6366f1", "#ec4899", "#f97316", "#22c55e", "#3b82f6",
+  "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#64748b",
+];
 
 export default function Conexoes() {
   const { toast } = useToast();
@@ -28,10 +35,18 @@ export default function Conexoes() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
 
+  // Tag state
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [editTagColor, setEditTagColor] = useState("");
+
   const { data: providers, isLoading: loadingProviders } = useWhatsAppProviders();
   const { data: instances, isLoading: loadingInstances } = useWhatsAppInstances();
   const { data: messageLogs, isLoading: loadingLogs } = useMessageLog();
   const { data: webhookLogs, isLoading: loadingWebhooks } = useWebhooksLog();
+  const { data: tags, isLoading: loadingTags } = useTags();
 
   const activateProvider = useActivateProvider();
   const updateConfig = useUpdateProviderConfig();
@@ -44,6 +59,9 @@ export default function Conexoes() {
   const getGroups = useGetGroups();
   const syncGroups = useSyncGroups();
   const checkStatus = useCheckStatus();
+  const createTag = useCreateTag();
+  const updateTag = useUpdateTag();
+  const deleteTag = useDeleteTag();
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -58,7 +76,7 @@ export default function Conexoes() {
     pollingCountRef.current = 0;
     pollingRef.current = setInterval(() => {
       pollingCountRef.current++;
-      if (pollingCountRef.current > 12) { // max 60s (12 * 5s)
+      if (pollingCountRef.current > 12) {
         stopPolling();
         return;
       }
@@ -68,7 +86,7 @@ export default function Conexoes() {
             stopPolling();
             setQrModal(s => ({ ...s, open: false }));
             toast({ title: "Conectado!", description: "Instância conectada com sucesso. Sincronizando grupos..." });
-            syncGroups.mutate(instanceId, {
+            syncGroups.mutate({ instanceId }, {
               onSuccess: (syncData: any) => {
                 toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
               },
@@ -82,10 +100,8 @@ export default function Conexoes() {
     }, 5000);
   }, [stopPolling, checkStatus, syncGroups, toast]);
 
-  // Clean up polling on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  // Auto-check status for instances stuck in "connecting" on page load
   const autoCheckedIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!instances?.length) return;
@@ -97,7 +113,7 @@ export default function Conexoes() {
         onSuccess: (data: any) => {
           if (data?.justConnected || data?.status === "connected") {
             toast({ title: `${inst.instance_name} conectada!`, description: "Sincronizando grupos automaticamente..." });
-            syncGroups.mutate(inst.id, {
+            syncGroups.mutate({ instanceId: inst.id }, {
               onSuccess: (syncData: any) => {
                 toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
               },
@@ -114,8 +130,8 @@ export default function Conexoes() {
     });
   }, [instances]);
 
-  const handleSyncGroups = (instanceId: string) => {
-    syncGroups.mutate(instanceId, {
+  const handleSyncGroups = (instanceId: string, tagId?: string) => {
+    syncGroups.mutate({ instanceId, tagId }, {
       onSuccess: (data: any) => {
         toast({ title: "Grupos sincronizados", description: `${data?.synced || 0} grupos mapeados com sucesso.` });
       },
@@ -144,7 +160,7 @@ export default function Conexoes() {
       onSuccess: (data: any) => {
         if (data?.alreadyConnected) {
           toast({ title: "Já conectado!", description: `${instanceName} já está conectada. Sincronizando grupos...` });
-          syncGroups.mutate(instanceId, {
+          syncGroups.mutate({ instanceId }, {
             onSuccess: (syncData: any) => {
               toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
             },
@@ -188,6 +204,35 @@ export default function Conexoes() {
     });
   };
 
+  const handleCreateTag = () => {
+    if (!newTagName.trim()) return;
+    createTag.mutate({ nome: newTagName.trim(), cor: newTagColor }, {
+      onSuccess: () => {
+        toast({ title: "Tag criada" });
+        setNewTagName("");
+        setNewTagColor(TAG_COLORS[0]);
+      },
+      onError: (e: any) => toast({ title: "Erro ao criar tag", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleUpdateTag = (id: string) => {
+    updateTag.mutate({ id, nome: editTagName, cor: editTagColor }, {
+      onSuccess: () => {
+        toast({ title: "Tag atualizada" });
+        setEditingTagId(null);
+      },
+      onError: (e: any) => toast({ title: "Erro ao atualizar", description: e.message, variant: "destructive" }),
+    });
+  };
+
+  const handleDeleteTag = (id: string) => {
+    deleteTag.mutate(id, {
+      onSuccess: () => toast({ title: "Tag excluída" }),
+      onError: (e: any) => toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" }),
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -199,6 +244,7 @@ export default function Conexoes() {
         <TabsList>
           <TabsTrigger value="instances">Instâncias</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
+          <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
         </TabsList>
@@ -284,9 +330,36 @@ export default function Conexoes() {
                             })} disabled={checkStatus.isPending}>
                               <Search className="w-4 h-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" title="Sincronizar Grupos" onClick={() => handleSyncGroups(inst.id)} disabled={syncGroups.isPending}>
-                              <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
-                            </Button>
+                            {/* Sync button with tag selector popover */}
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button size="icon" variant="ghost" title="Sincronizar Grupos" disabled={syncGroups.isPending}>
+                                  <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-56 p-2" align="end">
+                                <p className="text-xs font-medium text-muted-foreground px-2 py-1">Sincronizar com tag</p>
+                                <button
+                                  className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors"
+                                  onClick={() => handleSyncGroups(inst.id)}
+                                >
+                                  Todos (sem tag)
+                                </button>
+                                {tags?.map(tag => (
+                                  <button
+                                    key={tag.id}
+                                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors flex items-center gap-2"
+                                    onClick={() => handleSyncGroups(inst.id, tag.id)}
+                                  >
+                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.cor }} />
+                                    {tag.nome}
+                                  </button>
+                                ))}
+                                {(!tags || tags.length === 0) && (
+                                  <p className="text-xs text-muted-foreground px-2 py-1">Nenhuma tag criada</p>
+                                )}
+                              </PopoverContent>
+                            </Popover>
                             <Button size="icon" variant="ghost" title="Remover" onClick={() => {
                               stopPolling();
                               autoCheckedIdsRef.current.clear();
@@ -382,6 +455,118 @@ export default function Conexoes() {
                             <Heart className="w-4 h-4 mr-1" />
                             Testar
                           </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tags Tab ── */}
+        <TabsContent value="tags" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Tag className="w-5 h-5" /> Gerenciar Tags</CardTitle>
+              <CardDescription>Crie tags para organizar seus grupos por categorias</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Create tag form */}
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Nome da tag"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
+                  className="max-w-xs"
+                />
+                <div className="flex gap-1">
+                  {TAG_COLORS.map(c => (
+                    <button
+                      key={c}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform ${newTagColor === c ? "border-foreground scale-110" : "border-transparent"}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setNewTagColor(c)}
+                    />
+                  ))}
+                </div>
+                <Button onClick={handleCreateTag} disabled={createTag.isPending || !newTagName.trim()}>
+                  {createTag.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  Criar
+                </Button>
+              </div>
+
+              {/* Tags list */}
+              {loadingTags ? (
+                <div className="flex items-center justify-center py-8"><Loader2 className="animate-spin" /></div>
+              ) : !tags?.length ? (
+                <p className="text-muted-foreground text-center py-8">Nenhuma tag criada</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">Cor</TableHead>
+                      <TableHead>Nome</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {tags.map(tag => (
+                      <TableRow key={tag.id}>
+                        <TableCell>
+                          {editingTagId === tag.id ? (
+                            <div className="flex gap-1">
+                              {TAG_COLORS.map(c => (
+                                <button
+                                  key={c}
+                                  className={`w-5 h-5 rounded-full border-2 transition-transform ${editTagColor === c ? "border-foreground scale-110" : "border-transparent"}`}
+                                  style={{ backgroundColor: c }}
+                                  onClick={() => setEditTagColor(c)}
+                                />
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: tag.cor }} />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingTagId === tag.id ? (
+                            <Input
+                              value={editTagName}
+                              onChange={(e) => setEditTagName(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleUpdateTag(tag.id)}
+                              className="max-w-xs h-8"
+                            />
+                          ) : (
+                            <span className="font-medium">{tag.nome}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {editingTagId === tag.id ? (
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => handleUpdateTag(tag.id)} disabled={updateTag.isPending}>
+                                <Check className="w-4 h-4 text-green-500" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => setEditingTagId(null)}>
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => {
+                                setEditingTagId(tag.id);
+                                setEditTagName(tag.nome);
+                                setEditTagColor(tag.cor);
+                              }}>
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleDeleteTag(tag.id)} disabled={deleteTag.isPending}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))}

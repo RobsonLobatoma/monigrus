@@ -348,6 +348,7 @@ Deno.serve(async (req) => {
                 upd.gestor_id = user.id;
               }
               if (gestorTeamId) upd.team_id = gestorTeamId;
+              if (params.tagId) upd.tag_id = params.tagId;
               toUpdate.push({ id: existing.id, data: upd });
               jidToGroupId[jid] = existing.id;
             } else {
@@ -359,7 +360,7 @@ Deno.serve(async (req) => {
                 jidToGroupId[jid] = matchedId;
                 nameMap.delete(name); // consumed
               } else {
-                toInsert.push({ nome: name, whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true, status: "PENDENTE", sla: "DENTRO DO SLA" });
+                toInsert.push({ nome: name, whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true, status: "PENDENTE", sla: "DENTRO DO SLA", ...(params.tagId ? { tag_id: params.tagId } : {}) });
               }
             }
             synced++;
