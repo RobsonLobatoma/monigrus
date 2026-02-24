@@ -279,6 +279,9 @@ Deno.serve(async (req) => {
         break;
       }
       case "sync-groups": {
+        const syncStart = Date.now();
+        const MAX_EXEC_MS = 40000; // 40s safety margin
+
         const inst = await getInst(params.instanceId);
         console.log(`[sync-groups] Instance ${inst.instance_name}, status: ${inst.status}`);
         if (inst.status !== "connected") {
@@ -295,93 +298,161 @@ Deno.serve(async (req) => {
         const gestorTeamId = profile?.team_id ?? null;
         console.log(`[sync-groups] Gestor: ${gestorName}, team_id: ${gestorTeamId}`);
 
+        // 1. Fetch all groups from Evolution API (single call)
         console.log(`[sync-groups] Fetching groups from Evolution API...`);
         const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
-        console.log(`[sync-groups] Got ${waGroups.length} groups, starting upsert...`);
+        console.log(`[sync-groups] Got ${waGroups.length} groups from API`);
+
+        // 2. Pre-load ALL existing groups for this instance in 1 query
+        const { data: allExisting } = await svc.from("grupos")
+          .select("id, gestor, whatsapp_group_id, nome")
+          .eq("instance_id", inst.id);
+        const existingMap = new Map((allExisting || []).map(g => [g.whatsapp_group_id, g]));
+        console.log(`[sync-groups] Pre-loaded ${existingMap.size} existing groups from DB`);
+
+        // Also pre-load groups without whatsapp_group_id for name-matching
+        const { data: unmatchedGroups } = await svc.from("grupos")
+          .select("id, nome")
+          .is("whatsapp_group_id", null);
+        const nameMap = new Map((unmatchedGroups || []).map(g => [g.nome, g.id]));
+
+        // 3. Process in batches of 50
+        const BATCH_SIZE = 50;
         let synced = 0;
         const jidToGroupId: Record<string, string> = {};
-        for (const wg of waGroups) {
-          const jid = wg.id || wg.jid;
-          const name = wg.subject || wg.name || jid;
-          if (!jid) continue;
+        let timedOut = false;
 
-          const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
-          if (existing) {
-            const upd: any = { nome: name, ultima_atividade: new Date().toISOString(), instance_id: inst.id, ativo: true };
-            if (!existing.gestor && gestorName) {
-              upd.gestor = gestorName;
-              upd.gestor_id = user.id;
-            }
-            if (gestorTeamId) upd.team_id = gestorTeamId;
-            await svc.from("grupos").update(upd).eq("id", existing.id);
-            jidToGroupId[jid] = existing.id;
-          } else {
-            const { data: byName } = await svc.from("grupos").select("id").eq("nome", name).is("whatsapp_group_id", null).maybeSingle();
-            const insertData: any = { whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true };
-            if (byName) {
-              await svc.from("grupos").update(insertData).eq("id", byName.id);
-              jidToGroupId[jid] = byName.id;
+        for (let i = 0; i < waGroups.length; i += BATCH_SIZE) {
+          // Timeout protection
+          if (Date.now() - syncStart > MAX_EXEC_MS) {
+            console.log(`[sync-groups] Time limit reached at batch ${Math.floor(i / BATCH_SIZE)}, processed ${synced}/${waGroups.length}`);
+            timedOut = true;
+            break;
+          }
+
+          const batch = waGroups.slice(i, i + BATCH_SIZE);
+          const toInsert: any[] = [];
+          const toUpdate: { id: string; data: any }[] = [];
+
+          for (const wg of batch) {
+            const jid = wg.id || wg.jid;
+            const name = wg.subject || wg.name || jid;
+            if (!jid) continue;
+
+            const existing = existingMap.get(jid);
+            if (existing) {
+              const upd: any = { nome: name, ultima_atividade: new Date().toISOString(), instance_id: inst.id, ativo: true };
+              if (!existing.gestor && gestorName) {
+                upd.gestor = gestorName;
+                upd.gestor_id = user.id;
+              }
+              if (gestorTeamId) upd.team_id = gestorTeamId;
+              toUpdate.push({ id: existing.id, data: upd });
+              jidToGroupId[jid] = existing.id;
             } else {
-              const { data: inserted } = await svc.from("grupos").insert({ nome: name, ...insertData, status: "PENDENTE", sla: "DENTRO DO SLA" }).select("id").single();
-              if (inserted) jidToGroupId[jid] = inserted.id;
+              // Check name-match for groups without whatsapp_group_id
+              const matchedId = nameMap.get(name);
+              if (matchedId) {
+                const upd: any = { whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true };
+                toUpdate.push({ id: matchedId, data: upd });
+                jidToGroupId[jid] = matchedId;
+                nameMap.delete(name); // consumed
+              } else {
+                toInsert.push({ nome: name, whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true, status: "PENDENTE", sla: "DENTRO DO SLA" });
+              }
+            }
+            synced++;
+          }
+
+          // Batch updates: use Promise.all with individual updates (Supabase doesn't support multi-row update with different values)
+          // But we batch them in parallel within the batch, not sequentially
+          if (toUpdate.length > 0) {
+            await Promise.all(toUpdate.map(u => svc.from("grupos").update(u.data).eq("id", u.id)));
+          }
+
+          // Batch insert
+          if (toInsert.length > 0) {
+            const { data: inserted } = await svc.from("grupos").insert(toInsert).select("id, whatsapp_group_id");
+            if (inserted) {
+              for (const row of inserted) {
+                if (row.whatsapp_group_id) jidToGroupId[row.whatsapp_group_id] = row.id;
+              }
             }
           }
-          synced++;
         }
 
-        // Fetch last messages using findChats (single API call instead of N)
+        console.log(`[sync-groups] Upsert done: ${synced}/${waGroups.length} groups processed`);
+
+        // 4. Fetch last messages using findChats (single API call)
         const jids = Object.keys(jidToGroupId);
         let messagesFound = 0;
-        console.log(`[sync-groups] Fetching chats from Evolution API (single call)...`);
-        const chats = await evo.findChats(inst.instance_name, config);
-        console.log(`[sync-groups] Got ${chats.length} chats, mapping to groups...`);
-        
-        // Build map: remoteJid → lastMessage data
-        const chatMap = new Map<string, any>();
-        for (const chat of chats) {
-          const jid = chat.remoteJid || chat.id;
-          if (jid && chat.lastMessage) chatMap.set(jid, chat);
+
+        if (!timedOut && Date.now() - syncStart < MAX_EXEC_MS) {
+          console.log(`[sync-groups] Fetching chats from Evolution API...`);
+          const chats = await evo.findChats(inst.instance_name, config);
+          console.log(`[sync-groups] Got ${chats.length} chats, mapping to groups...`);
+
+          // Build map: remoteJid → lastMessage data
+          const chatMap = new Map<string, any>();
+          for (const chat of chats) {
+            const jid = chat.remoteJid || chat.id;
+            if (jid && chat.lastMessage) chatMap.set(jid, chat);
+          }
+
+          // Batch message updates
+          const msgUpdates: { id: string; last_message: string; last_message_at: string }[] = [];
+          for (const jid of jids) {
+            const chat = chatMap.get(jid);
+            if (!chat?.lastMessage) continue;
+            const msg = chat.lastMessage;
+            const text = msg?.message?.conversation
+              || msg?.message?.extendedTextMessage?.text
+              || msg?.message?.imageMessage?.caption
+              || msg?.message?.videoMessage?.caption
+              || msg?.message?.documentMessage?.caption
+              || msg?.body
+              || null;
+            if (!text) continue;
+            const ts = msg?.messageTimestamp
+              ? new Date((typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : parseInt(msg.messageTimestamp)) * 1000).toISOString()
+              : new Date().toISOString();
+            const senderName = msg?.pushName || "";
+            const lastMsg = senderName ? `${senderName}: ${text}`.substring(0, 500) : text.substring(0, 500);
+            msgUpdates.push({ id: jidToGroupId[jid], last_message: lastMsg, last_message_at: ts });
+          }
+
+          // Process message updates in batches of 50 (parallel within batch)
+          for (let i = 0; i < msgUpdates.length; i += BATCH_SIZE) {
+            if (Date.now() - syncStart > MAX_EXEC_MS) {
+              console.log(`[sync-groups] Time limit on message updates at ${messagesFound}`);
+              break;
+            }
+            const msgBatch = msgUpdates.slice(i, i + BATCH_SIZE);
+            await Promise.all(msgBatch.map(u => svc.from("grupos").update({ last_message: u.last_message, last_message_at: u.last_message_at }).eq("id", u.id)));
+            messagesFound += msgBatch.length;
+          }
+          console.log(`[sync-groups] Messages updated: ${messagesFound}/${jids.length}`);
         }
 
-        for (const jid of jids) {
-          const chat = chatMap.get(jid);
-          if (!chat?.lastMessage) continue;
-          const msg = chat.lastMessage;
-          const text = msg?.message?.conversation
-            || msg?.message?.extendedTextMessage?.text
-            || msg?.message?.imageMessage?.caption
-            || msg?.message?.videoMessage?.caption
-            || msg?.message?.documentMessage?.caption
-            || msg?.body
-            || null;
-          if (!text) continue;
-          const ts = msg?.messageTimestamp
-            ? new Date((typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : parseInt(msg.messageTimestamp)) * 1000).toISOString()
-            : new Date().toISOString();
-          const senderName = msg?.pushName || "";
-          const lastMsg = senderName ? `${senderName}: ${text}`.substring(0, 500) : text.substring(0, 500);
-          await svc.from("grupos").update({ last_message: lastMsg, last_message_at: ts }).eq("id", jidToGroupId[jid]);
-          messagesFound++;
-        }
-        console.log(`[sync-groups] Messages found: ${messagesFound}/${jids.length}`);
-
-        // Auto-register webhook if not configured
-        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
-        try {
-          const webhookInfo = await evo.findWebhook(inst.instance_name, config);
-          console.log(`[sync-groups] Webhook config for ${inst.instance_name}:`, JSON.stringify(webhookInfo));
-          const isEnabled = webhookInfo?.enabled === true || webhookInfo?.webhook?.enabled === true;
-          if (!isEnabled) {
-            console.log(`[sync-groups] Webhook not enabled, registering automatically...`);
+        // 5. Auto-register webhook if not configured
+        if (Date.now() - syncStart < MAX_EXEC_MS) {
+          const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
+          try {
+            const webhookInfo = await evo.findWebhook(inst.instance_name, config);
+            const isEnabled = webhookInfo?.enabled === true || webhookInfo?.webhook?.enabled === true;
+            if (!isEnabled) {
+              console.log(`[sync-groups] Webhook not enabled, registering...`);
+              await evo.setWebhook(inst.instance_name, config, webhookUrl);
+            }
+          } catch (e) {
+            console.log(`[sync-groups] Could not check webhook, registering anyway...`);
             await evo.setWebhook(inst.instance_name, config, webhookUrl);
           }
-        } catch (e) {
-          console.log(`[sync-groups] Could not check webhook, registering anyway...`);
-          await evo.setWebhook(inst.instance_name, config, webhookUrl);
         }
 
-        console.log(`[sync-groups] Done. Synced: ${synced}/${waGroups.length}`);
-        result = { synced, total: waGroups.length, messagesFound };
+        const elapsed = ((Date.now() - syncStart) / 1000).toFixed(1);
+        console.log(`[sync-groups] Done in ${elapsed}s. Synced: ${synced}/${waGroups.length}${timedOut ? " (partial - timed out)" : ""}`);
+        result = { synced, total: waGroups.length, messagesFound, timedOut, elapsed: `${elapsed}s` };
         break;
       }
       case "check-status": {
