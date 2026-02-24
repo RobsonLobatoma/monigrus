@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   LayoutGrid,
   Users,
@@ -6,6 +6,8 @@ import {
   TrendingUp,
   Clock,
   Trophy,
+  Shield,
+  Search,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -16,19 +18,117 @@ import {
 } from "@/components/ui/select";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useOperationalMetrics } from "@/hooks/useOperationalMetrics";
+import { useGrupos } from "@/hooks/useGrupos";
+import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { CapacityAlert } from "@/components/CapacityAlert";
 import { Navigate } from "react-router-dom";
+
+/* ─── Table styles (matching Monitoramento.tsx) ─── */
+const FALLBACK_SAT_STYLE: Record<string, { background: string; color: string }> = {
+  "Ótimo":   { background: "#22c55e", color: "#ffffff" },
+  "Regular": { background: "#facc15", color: "#000000" },
+  "Ruim":    { background: "#ef4444", color: "#ffffff" },
+};
+
+const thStyle: React.CSSProperties = {
+  padding: "12px 12px", textAlign: "left", fontSize: "10px", fontWeight: 700,
+  letterSpacing: "0.08em", textTransform: "uppercase", color: "hsl(var(--muted-foreground))",
+  boxSizing: "border-box", borderBottom: "1px solid hsl(var(--border))", whiteSpace: "nowrap",
+};
+
+const tdBase: React.CSSProperties = {
+  padding: "0 12px", verticalAlign: "middle", height: "56px", boxSizing: "border-box",
+};
+
+const tdColoredOuter: React.CSSProperties = {
+  padding: 0, height: "56px", boxSizing: "border-box",
+};
+
+const cellFill: React.CSSProperties = {
+  display: "flex", alignItems: "center", justifyContent: "center",
+  height: "56px", width: "100%", fontWeight: 600, fontSize: "13px",
+};
+
+function isLightColor(hex: string): boolean {
+  const c = hex.replace("#", "");
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 > 150;
+}
 
 const Squads = () => {
   const { role, teamId, loading } = useCurrentUserRole();
   const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
+  const [groupSearch, setGroupSearch] = useState("");
 
   // Supervisor can only see their squad
   const isSupervisor = role === "SUPERVISOR";
   const effectiveTeamId = isSupervisor ? teamId : selectedSquadId;
 
+  const { data: dbGrupos } = useGrupos();
+  const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
+  const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
+  const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
+
   const allMetrics = useOperationalMetrics(null);
   const filteredMetrics = useOperationalMetrics(effectiveTeamId);
+
+  // Dynamic color maps
+  const satStyleMap = useMemo(() => {
+    const map: Record<string, { background: string; color: string }> = { ...FALLBACK_SAT_STYLE };
+    satSettings.forEach((s) => {
+      if (s.color) map[s.label] = { background: s.color, color: isLightColor(s.color) ? "#000000" : "#ffffff" };
+    });
+    return map;
+  }, [satSettings]);
+
+  const statusStyleMap = useMemo(() => {
+    const map: Record<string, { background: string; color: string }> = {};
+    statusSettings.forEach((s) => {
+      if (s.color) map[s.label] = { background: s.color, color: isLightColor(s.color) ? "#000000" : "#ffffff" };
+    });
+    return map;
+  }, [statusSettings]);
+
+  const scoreToSatisfacao = useMemo(() => {
+    if (scoreSettings.length === 0) {
+      return (score: number) => score >= 71 ? "Ótimo" : score >= 41 ? "Regular" : "Ruim";
+    }
+    return (score: number) => {
+      for (const s of scoreSettings) {
+        if (s.min_value !== null && s.max_value !== null && score >= s.min_value && score <= s.max_value) return s.label;
+      }
+      return "Regular";
+    };
+  }, [scoreSettings]);
+
+  // Squad grupos for table
+  const squadGrupos = useMemo(() => {
+    if (!effectiveTeamId || !dbGrupos) return [];
+    return dbGrupos
+      .filter((g) => g.team_id === effectiveTeamId)
+      .map((g) => {
+        const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
+        return {
+          id: g.id,
+          dataHora: g.ultima_atividade ?? "—",
+          grupo: g.nome,
+          gestorTrafego: g.gestor ?? "—",
+          satisfacao: scoreToSatisfacao(score),
+          score,
+          status: g.status ?? "PENDENTE",
+          descricao: `Grupo: ${g.nome}`,
+        };
+      });
+  }, [dbGrupos, effectiveTeamId, scoreToSatisfacao]);
+
+  const filteredGrupos = squadGrupos.filter(
+    (row) =>
+      row.grupo.toLowerCase().includes(groupSearch.toLowerCase()) ||
+      row.gestorTrafego.toLowerCase().includes(groupSearch.toLowerCase()) ||
+      row.status.toLowerCase().includes(groupSearch.toLowerCase())
+  );
 
   if (loading) return null;
 
@@ -205,6 +305,126 @@ const Squads = () => {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Grupos do Squad - Monitoring Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Shield size={16} className="text-primary" />
+                  Grupos do Squad
+                </CardTitle>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Buscar grupo..."
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-56 transition-all"
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-hidden rounded-b-lg">
+                <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: "90px" }} />
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: "14%" }} />
+                    <col style={{ width: "130px" }} />
+                    <col style={{ width: "80px" }} />
+                    <col style={{ width: "120px" }} />
+                    <col />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thStyle, paddingLeft: "20px" }}>DATA/HORA</th>
+                      <th style={thStyle}>GRUPO</th>
+                      <th style={thStyle}>GESTOR DE TRÁFEGO</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
+                      <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
+                      <th style={thStyle}>STATUS</th>
+                      <th style={thStyle}>DESCRIÇÃO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredGrupos.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                          Nenhum grupo encontrado neste squad.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredGrupos.map((row, idx) => {
+                        const satStyle = satStyleMap[row.satisfacao] ?? { background: "#888", color: "#fff" };
+                        const stsStyle = statusStyleMap[row.status];
+                        const isLast = idx === filteredGrupos.length - 1;
+                        const borderStyle = isLast ? "none" : "1px solid hsl(var(--border))";
+
+                        return (
+                          <tr key={row.id} style={{ height: "56px" }}>
+                            <td style={{ ...tdBase, paddingLeft: "20px", borderBottom: borderStyle }}>
+                              <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                                {row.dataHora}
+                              </p>
+                            </td>
+                            <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                              <p style={{ fontSize: "13px", fontWeight: 600, color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {row.grupo}
+                              </p>
+                            </td>
+                            <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                              <p style={{ fontSize: "13px", color: "hsl(var(--muted-foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {row.gestorTrafego}
+                              </p>
+                            </td>
+                            <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                              <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                                {row.satisfacao}
+                              </div>
+                            </td>
+                            <td style={{ ...tdColoredOuter, borderBottom: borderStyle }}>
+                              <div style={{ ...cellFill, background: satStyle.background, color: satStyle.color }}>
+                                {row.score}
+                              </div>
+                            </td>
+                            <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                              {stsStyle ? (
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", fontSize: "11px", fontWeight: 600,
+                                  letterSpacing: "0.04em", color: stsStyle.color, background: stsStyle.background,
+                                  padding: "2px 8px", borderRadius: "4px", whiteSpace: "nowrap",
+                                }}>
+                                  {row.status}
+                                </span>
+                              ) : (
+                                <span style={{
+                                  display: "inline-flex", alignItems: "center", fontSize: "11px", fontWeight: 500,
+                                  letterSpacing: "0.04em", color: "hsl(var(--foreground))", whiteSpace: "nowrap",
+                                }}>
+                                  {row.status}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ ...tdBase, borderBottom: borderStyle }}>
+                              <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                "{row.descricao}"
+                              </p>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+                <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
+                  {filteredGrupos.length} de {squadGrupos.length} registros exibidos
+                </div>
+              </div>
             </CardContent>
           </Card>
         </>
