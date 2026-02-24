@@ -1,48 +1,36 @@
 
 
-## Plano: Adicionar Tabela de Monitoramento no Detalhe do Squad
+## Plano: Adicionar filtros de Data e Gestor de Trafego na tabela "Grupos do Squad"
 
 ### Problema
-Quando o usuario seleciona um squad, o painel mostra KPIs e gestores, mas nao exibe a tabela de grupos/clientes com o mesmo formato visual do Painel de Monitoramento (colunas Data/Hora, Grupo, Gestor, Satisfacao, Score, Status, Descricao).
-
-### Solucao
-Adicionar uma tabela de monitoramento completa dentro da view de detalhe do squad, filtrando apenas os grupos do squad selecionado. A tabela usara o mesmo estilo visual do `Monitoramento.tsx`.
+Apos selecionar um squad, a tabela "Grupos do Squad" so tem um campo de busca textual. O usuario precisa de filtros dedicados por data e por gestor de trafego.
 
 ### Arquivo a modificar: `src/pages/Squads.tsx`
 
-**Alteracoes:**
+### Alteracoes
 
-1. **Novos imports**: Adicionar `useMemo`, `Search`, `Shield`, `useGrupos`, `useMonitoringSettings`
+1. **Novos imports**: Adicionar `CalendarIcon`, `Filter` do lucide-react; `Popover`, `PopoverContent`, `PopoverTrigger` de `@/components/ui/popover`; `Calendar` de `@/components/ui/calendar`; `Button` de `@/components/ui/button`; `format` de `date-fns`
 
-2. **Estilos da tabela**: Copiar os estilos inline (`thStyle`, `tdBase`, `tdColoredOuter`, `cellFill`, `FALLBACK_SAT_STYLE`, `isLightColor`) do `Monitoramento.tsx` para reutilizar o mesmo padrao visual
+2. **Novos estados** (junto aos existentes, linha ~63):
+   - `const [filterDate, setFilterDate] = useState<Date | undefined>(undefined)`
+   - `const [filterGestor, setFilterGestor] = useState<string>("all")`
 
-3. **Dentro do componente** (apos os hooks existentes):
-   - Adicionar `const { data: dbGrupos } = useGrupos()`
-   - Adicionar hooks de monitoring settings: `useMonitoringSettings("SATISFACAO")`, `useMonitoringSettings("SCORE")`, `useMonitoringSettings("STATUS")`
-   - Adicionar estado `const [groupSearch, setGroupSearch] = useState("")`
-   - Adicionar memos para `satStyleMap`, `statusStyleMap`, `scoreToSatisfacao` (mesma logica do Monitoramento)
-   - Adicionar memo `squadGrupos` que filtra `dbGrupos` por `team_id === effectiveTeamId` e mapeia para o formato da tabela (dataHora, grupo, gestor, satisfacao, score, status, descricao)
-   - Adicionar filtro de busca sobre `squadGrupos`
+3. **Lista unica de gestores** (memo):
+   - Extrair todos os valores distintos de `gestorTrafego` do `squadGrupos` para popular o Select de gestores
 
-4. **No JSX**, apos o card "Gestores do Squad" (linha ~209), adicionar:
-   - Um novo `Card` com titulo "Grupos do Squad" (icone Shield)
-   - Campo de busca no header do card
-   - Tabela HTML com as colunas: DATA/HORA, GRUPO, GESTOR DE TRAFEGO, SATISFACAO, SCORE, STATUS, DESCRICAO
-   - Cada linha usa o mesmo estilo de cores preenchidas para Satisfacao/Score e badges para Status
-   - Footer com contagem de registros
+4. **Atualizar `filteredGrupos`** (linha ~126): Adicionar condicoes ao filtro existente:
+   - Se `filterDate` estiver definido, comparar a data de `row.dataHora` com a data selecionada
+   - Se `filterGestor` nao for `"all"`, filtrar por `row.gestorTrafego === filterGestor`
+
+5. **No JSX do CardHeader da tabela** (linhas ~313-329): Adicionar uma barra de filtros ao lado do campo de busca contendo:
+   - Um `Popover` com `Calendar` (mode="single") para selecionar data, com botao mostrando a data selecionada ou "Filtrar por data"
+   - Um `Select` para gestor de trafego com opcao "Todos os gestores" + lista dinamica
+   - Manter o campo de busca existente
 
 ### Detalhes Tecnicos
 
-A tabela sera identica visualmente a do `Monitoramento.tsx`:
-- Colunas Satisfacao e Score com fundo colorido preenchendo toda a celula (verde/amarelo/vermelho)
-- Coluna Status com badge colorido dinamico baseado nas monitoring_settings
-- Altura fixa de 56px por linha
-- Cores dinamicas vindas do banco (monitoring_settings)
-- Busca local por nome do grupo, gestor ou status
-- Score calculado a partir de `g.mensagens` (mesmo calculo do Monitoramento)
-
-### Nenhuma funcionalidade existente sera alterada
-- A tabela e puramente aditiva
-- Os KPIs e a tabela de gestores permanecem intactos
-- Compativel com dark mode (usa variaveis CSS)
+- O filtro de data compara apenas a parte de data (YYYY-MM-DD) do campo `ultima_atividade` com a data selecionada via `format(filterDate, "yyyy-MM-dd")`
+- O Calendar usa `className="p-3 pointer-events-auto"` para funcionar dentro do Popover
+- Os filtros sao resetados quando o usuario troca de squad (via efeito no `effectiveTeamId`)
+- Layout responsivo: filtros empilham em telas menores usando `flex-wrap`
 
