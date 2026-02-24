@@ -61,11 +61,12 @@ Deno.serve(async (req) => {
         await supabase.from("whatsapp_instances").update(updateData).eq("id", instanceId);
       }
 
-      // Log inbound messages
+      // Process inbound messages and save to grupo_messages
       if (eventType === "messages.upsert" && body.data) {
         const messages = Array.isArray(body.data) ? body.data : [body.data];
         for (const msg of messages) {
           if (msg.key && !msg.key.fromMe) {
+            // Log to whatsapp_message_log
             await supabase.from("whatsapp_message_log").insert({
               instance_id: instanceId,
               direction: "inbound",
@@ -73,6 +74,71 @@ Deno.serve(async (req) => {
               payload: msg,
               status: "delivered",
             });
+
+            // Extract message info
+            const remoteJid = msg.key?.remoteJid || "";
+            const isGroup = remoteJid.endsWith("@g.us");
+            const senderName = msg.pushName || msg.key?.participant || "Desconhecido";
+            const messageText = msg.message?.conversation
+              || msg.message?.extendedTextMessage?.text
+              || msg.message?.imageMessage?.caption
+              || msg.message?.videoMessage?.caption
+              || msg.message?.documentMessage?.caption
+              || `[${msg.messageType || "mídia"}]`;
+            const messageType = msg.messageType || "text";
+
+            if (isGroup) {
+              // Insert into grupo_messages
+              await supabase.from("grupo_messages").insert({
+                instance_id: instanceId,
+                whatsapp_group_id: remoteJid,
+                sender_name: senderName,
+                message_text: messageText,
+                message_type: messageType,
+                received_at: new Date().toISOString(),
+              });
+
+              // Update grupos table if mapped
+              const { data: grupo } = await supabase
+                .from("grupos")
+                .select("id")
+                .eq("whatsapp_group_id", remoteJid)
+                .maybeSingle();
+
+              if (grupo) {
+                // Update grupo_messages with grupo_id
+                await supabase
+                  .from("grupo_messages")
+                  .update({ grupo_id: grupo.id })
+                  .eq("whatsapp_group_id", remoteJid)
+                  .is("grupo_id", null);
+
+                // Update last_message on grupos
+                const now = new Date().toISOString();
+                await supabase
+                  .from("grupos")
+                  .update({
+                    last_message: `${senderName}: ${messageText}`.substring(0, 500),
+                    last_message_at: now,
+                    ultima_atividade: now,
+                    mensagens: grupo.id ? undefined : 0, // increment handled below
+                  })
+                  .eq("id", grupo.id);
+
+                // Increment message count
+                const { data: current } = await supabase
+                  .from("grupos")
+                  .select("mensagens")
+                  .eq("id", grupo.id)
+                  .single();
+                if (current) {
+                  await supabase
+                    .from("grupos")
+                    .update({ mensagens: (current.mensagens || 0) + 1 })
+                    .eq("id", grupo.id);
+                }
+              }
+            }
           }
         }
       }

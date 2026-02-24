@@ -519,6 +519,57 @@ export type Database = {
           },
         ]
       }
+      grupo_messages: {
+        Row: {
+          created_at: string
+          grupo_id: string | null
+          id: string
+          instance_id: string | null
+          message_text: string | null
+          message_type: string
+          received_at: string
+          sender_name: string | null
+          whatsapp_group_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          grupo_id?: string | null
+          id?: string
+          instance_id?: string | null
+          message_text?: string | null
+          message_type?: string
+          received_at?: string
+          sender_name?: string | null
+          whatsapp_group_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          grupo_id?: string | null
+          id?: string
+          instance_id?: string | null
+          message_text?: string | null
+          message_type?: string
+          received_at?: string
+          sender_name?: string | null
+          whatsapp_group_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grupo_messages_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grupo_messages_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grupos: {
         Row: {
           ativo: boolean
@@ -526,6 +577,8 @@ export type Database = {
           gestor: string | null
           gestor_id: string | null
           id: string
+          last_message: string | null
+          last_message_at: string | null
           mensagens: number
           nome: string
           sector_id: string | null
@@ -534,6 +587,7 @@ export type Database = {
           team_id: string | null
           ultima_atividade: string | null
           updated_at: string
+          whatsapp_group_id: string | null
         }
         Insert: {
           ativo?: boolean
@@ -541,6 +595,8 @@ export type Database = {
           gestor?: string | null
           gestor_id?: string | null
           id?: string
+          last_message?: string | null
+          last_message_at?: string | null
           mensagens?: number
           nome: string
           sector_id?: string | null
@@ -549,6 +605,7 @@ export type Database = {
           team_id?: string | null
           ultima_atividade?: string | null
           updated_at?: string
+          whatsapp_group_id?: string | null
         }
         Update: {
           ativo?: boolean
@@ -556,6 +613,8 @@ export type Database = {
           gestor?: string | null
           gestor_id?: string | null
           id?: string
+          last_message?: string | null
+          last_message_at?: string | null
           mensagens?: number
           nome?: string
           sector_id?: string | null
@@ -564,6 +623,7 @@ export type Database = {
           team_id?: string | null
           ultima_atividade?: string | null
           updated_at?: string
+          whatsapp_group_id?: string | null
         }
         Relationships: [
           {
