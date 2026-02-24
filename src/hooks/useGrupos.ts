@@ -12,6 +12,7 @@ export function useGrupos() {
         .from("grupos")
         .select("*")
         .eq("ativo", true)
+        .not("instance_id", "is", null)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data as GrupoDB[];
