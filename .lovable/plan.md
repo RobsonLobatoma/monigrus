@@ -2,82 +2,90 @@
 
 ## Diagnostico
 
-Analisei os logs, o codigo e o fluxo completo. Identifiquei **3 problemas** que causam o erro ao remover e adicionar instancia:
+O `sync-groups` atual (linhas 281-385) faz tudo em uma unica chamada:
+1. `fetchAllGroups` — retorna TODOS os grupos de uma vez (payload enorme com ~1000 grupos)
+2. Loop sequencial com 1 query por grupo (1000 queries individuais ao banco)
+3. `findChats` — outro payload enorme
+4. Loop sequencial para atualizar mensagens
 
-### Problema 1: Polling continua apos deletar instancia
-Quando o usuario deleta uma instancia enquanto o polling de `check-status` esta ativo (interval de 5s), o polling continua chamando `checkStatus.mutate(oldInstanceId)`. O ID antigo nao existe mais no banco, causando erro "Instance not found" que nao eh tratado e pode crashar a app.
+Com ~1000 grupos isso facilmente estoura o timeout de 45s da Edge Function e o limite de execucao do Supabase.
 
-### Problema 2: Auto-sync dispara sem `onError` handler
-No `useEffect` das linhas 90-107, quando uma instancia "connecting" eh detectada, `syncGroups.mutate()` eh chamado sem `onError`. Se o sync falhar (timeout de 45s no `fetchAllGroups`), o erro propaga sem tratamento e causa o dialog "The app encountered an error".
+## Solucao
 
-### Problema 3: `autoCheckedRef` nunca reseta
-A ref `autoCheckedRef` eh setada para `true` na primeira vez e nunca volta a `false`. Quando o usuario deleta a instancia e cria uma nova (que fica em "connecting"), o auto-check nao roda para a nova instancia porque `autoCheckedRef.current` ja eh `true`.
+Implementar sincronizacao em batches **dentro da mesma Edge Function**, sem criar tabelas novas desnecessarias. A tabela `grupos` ja tem todos os campos necessarios (`ativo`, `last_message_at`, `instance_id`). Nao precisa de `whatsapp_groups` nem `sync_progress` — isso adicionaria complexidade sem resolver o problema real.
 
-### Sobre o timeout de 45s no `fetchAllGroups`
-Os logs confirmam que a URL esta correta (`http://...sslip.io/group/fetchAllGroups/robson`), o protocolo ja eh HTTP. O endpoint simplesmente demora demais ou trava no servidor Evolution API para instancias recem-conectadas. Isso nao pode ser corrigido no nosso lado, mas podemos tornar o fluxo resiliente.
+O problema real eh:
+1. O loop faz 1 query por grupo (N queries) — resolver com **upsert em batch**
+2. O payload do `fetchAllGroups` pode ser grande mas eh uma unica chamada HTTP — isso nao causa timeout
+3. O processamento sequencial de ~1000 grupos no banco causa timeout — resolver com batches de INSERT/UPDATE
 
 ---
 
 ## Plano de Implementacao
 
-### Arquivo: `src/pages/Conexoes.tsx`
+### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
 
-**Mudanca 1** — Parar polling ao deletar instancia:
-
-```text
-handleDeleteInstance (novo):
-  1. Chamar stopPolling() ANTES de deletar
-  2. Resetar autoCheckedRef para false
-  3. Deletar instancia
-  4. Toast de sucesso
-```
-
-Atualmente a linha 283 chama `deleteInstance.mutate` inline sem parar o polling.
-
-**Mudanca 2** — Adicionar `onError` no auto-sync do useEffect:
+**Mudanca 1** — Reescrever o case `sync-groups` para processar em batches de 50 grupos usando `upsert` em vez de queries individuais:
 
 ```text
-useEffect (linhas 90-107):
-  syncGroups.mutate(inst.id, {
-    onSuccess: ...,
-    onError: (err) => {
-      console.error("Auto-sync failed:", err.message);
-      // Silencioso - nao mostra toast para auto-sync
-    }
-  });
+sync-groups reescrito:
+
+1. Buscar todos os grupos da Evolution API (1 chamada — inevitavel)
+2. Buscar todos os grupos existentes no banco para esta instancia (1 query)
+3. Dividir grupos da API em batches de 50
+4. Para cada batch:
+   a. Separar em "existentes" (update) e "novos" (insert)
+   b. Fazer upsert em batch via Supabase (1-2 queries por batch, nao 50)
+   c. Acumular mapa jid→id
+5. Buscar chats (findChats — 1 chamada)
+6. Atualizar last_message em batches de 50
+7. Verificar webhook
 ```
 
-**Mudanca 3** — Resetar `autoCheckedRef` quando instancias mudam:
+Isso reduz de ~1000 queries individuais para ~40 queries em batch (20 batches × 2 ops).
+
+**Mudanca 2** — Adicionar early timeout protection:
 
 ```text
-// Quando a lista de instancias muda (criacao/delecao), permitir nova auto-check
-// Trocar autoCheckedRef por um estado que rastreie os IDs ja verificados
-// OU simplesmente resetar autoCheckedRef quando instances.length muda
+const startTime = Date.now();
+const MAX_EXEC_MS = 40000; // 40s — deixar 5s de margem
+
+// Em cada iteracao de batch:
+if (Date.now() - startTime > MAX_EXEC_MS) {
+  console.log(`[sync-groups] Time limit reached at batch ${i}`);
+  break; // Salva o que ja processou
+}
 ```
 
-Usar um `Set` de IDs ja verificados em vez de boolean simples:
-```text
-const autoCheckedIdsRef = useRef<Set<string>>(new Set());
-
-useEffect:
-  for each connecting instance:
-    if (!autoCheckedIdsRef.current.has(inst.id)):
-      autoCheckedIdsRef.current.add(inst.id);
-      checkStatus.mutate(inst.id, { ... });
-```
-
-**Mudanca 4** — Extrair delete handler para funcao dedicada:
+**Mudanca 3** — Buscar grupos existentes em uma unica query em vez de N queries individuais:
 
 ```text
-const handleDeleteInstance = (instanceId: string) => {
-  stopPolling();
-  autoCheckedIdsRef.current.clear();
-  deleteInstance.mutate(instanceId, {
-    onSuccess: () => toast({ title: "Instância removida" }),
-    onError: (e) => toast({ title: "Erro ao remover", description: e.message, variant: "destructive" }),
-  });
-};
+// ANTES (1 query por grupo):
+for (const wg of waGroups) {
+  const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
+}
+
+// DEPOIS (1 query total):
+const { data: allExisting } = await svc.from("grupos")
+  .select("id, gestor, whatsapp_group_id, nome")
+  .eq("instance_id", inst.id);
+const existingMap = new Map(allExisting?.map(g => [g.whatsapp_group_id, g]) || []);
 ```
+
+**Mudanca 4** — Usar batched updates em vez de updates individuais para mensagens:
+
+```text
+// Em vez de 1 update por grupo para last_message:
+// Acumular e fazer updates em batch de 50
+```
+
+### Nenhuma mudanca de schema necessaria
+
+A tabela `grupos` ja tem `ativo`, `last_message`, `last_message_at`, `instance_id`. Nao eh necessario criar tabelas novas. Tags e filtros de ativo/inativo podem ser adicionados depois como feature separada — o problema imediato eh o timeout.
+
+### Nenhuma mudanca no frontend
+
+O frontend ja chama `syncGroups.mutate(instanceId)` e exibe o resultado. A resposta continua sendo `{ synced, total, messagesFound }`.
 
 ---
 
@@ -85,12 +93,13 @@ const handleDeleteInstance = (instanceId: string) => {
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `src/pages/Conexoes.tsx` | Parar polling ao deletar; adicionar onError no auto-sync; usar Set de IDs em vez de boolean para autoCheck; extrair handleDeleteInstance |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Reescrever `sync-groups`: pre-carregar existentes em 1 query, processar em batches de 50 com upsert, timeout protection de 40s, batch updates para mensagens |
 
 ## Resultado esperado
 
-1. Deletar instancia para o polling imediatamente — sem chamadas fantasma a IDs inexistentes
-2. Criar nova instancia apos deletar permite auto-check correto da nova instancia
-3. Erros de sync (timeout 45s) nao crasham a app — tratados silenciosamente no auto-sync, com toast no sync manual
-4. O dialog "The app encountered an error" nao aparece mais
+1. Sincronizacao de ~1000 grupos completa em <40s (vs timeout atual)
+2. ~20 queries ao banco em vez de ~1000
+3. Se atingir o limite de tempo, salva o progresso parcial
+4. Sem mudancas no banco ou frontend
+5. Mesma API, mesma resposta, mesma UX
 
