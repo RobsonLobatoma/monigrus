@@ -17,7 +17,9 @@ async function safeFetch(url: string | URL | Request, init?: RequestInit): Promi
     if (msg.includes("certificate") || msg.includes("UnknownIssuer")) {
       const httpUrl = String(url).replace("https://", "http://");
       console.log(`[safeFetch] TLS error, falling back to HTTP: ${httpUrl}`);
-      return await fetch(httpUrl, init);
+      // Create a fresh signal so the retry gets the full timeout budget
+      const retryInit = init ? { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT) } : undefined;
+      return await fetch(httpUrl, retryInit);
     }
     throw err;
   }
