@@ -7,7 +7,7 @@ const corsHeaders = {
 
 interface ProviderConfig { base_url: string; api_key: string; }
 
-const FETCH_TIMEOUT = 25000;
+const FETCH_TIMEOUT = 45000;
 
 async function safeJson(res: Response): Promise<any> {
   const text = await res.text();
@@ -289,7 +289,7 @@ Deno.serve(async (req) => {
   } catch (err: any) {
     const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
     const msg = isTimeout
-      ? "A Evolution API não respondeu dentro de 25 segundos. Verifique se o servidor está acessível e se o URL/IP é público."
+      ? "A Evolution API não respondeu dentro de 45 segundos. Verifique se o servidor está acessível e se o URL/IP é público."
       : (err.message || "Internal error");
     console.error("Orchestrator error:", msg, err.name);
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
