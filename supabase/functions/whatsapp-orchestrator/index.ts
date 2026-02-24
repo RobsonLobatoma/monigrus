@@ -85,18 +85,24 @@ const evo = {
   setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
     console.log(`[evo.setWebhook] Setting webhook for ${n} → ${webhookUrl}`);
     try {
-      await safeJson(await safeFetch(`${c.base_url}/webhook/set/${n}`, {
+      const res = await safeJson(await safeFetch(`${c.base_url}/webhook/set/${n}`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({
+          enabled: true,
           url: webhookUrl,
-          webhook_by_events: false,
-          webhook_base64: false,
-          events: ["connection.update", "qrcode.updated", "messages.upsert", "messages.update", "status.instance"]
+          webhookByEvents: false,
+          webhookBase64: false,
+          events: [
+            "MESSAGES_UPSERT",
+            "MESSAGES_UPDATE",
+            "CONNECTION_UPDATE",
+            "QRCODE_UPDATED"
+          ]
         }),
         signal: sig()
       }));
-      console.log(`[evo.setWebhook] Webhook set successfully for ${n}`);
+      console.log(`[evo.setWebhook] Webhook set successfully for ${n}:`, JSON.stringify(res));
     } catch (e) {
       console.error(`[evo.setWebhook] Failed to set webhook for ${n}:`, e);
     }
@@ -110,25 +116,18 @@ const evo = {
     try { const r = await safeFetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
     catch { return { healthy: false, latency: Date.now() - s }; }
   },
-  findLastMessage: async (n: string, c: ProviderConfig, remoteJid: string) => {
+  findChats: async (n: string, c: ProviderConfig) => {
     try {
-      const d = await safeJson(await safeFetch(`${c.base_url}/chat/findMessages/${n}`, {
+      const d = await safeJson(await safeFetch(`${c.base_url}/chat/findChats/${n}`, {
         method: "POST",
         headers: headers(c),
-        body: JSON.stringify({ where: { key: { remoteJid } }, limit: 1 }),
+        body: JSON.stringify({}),
         signal: sig()
       }));
-      const msgs = Array.isArray(d) ? d : d?.messages || d?.data || [];
-      if (msgs.length === 0) return null;
-      const msg = msgs[0];
-      const text = msg?.message?.conversation || msg?.message?.extendedTextMessage?.text || msg?.body || null;
-      const ts = msg?.messageTimestamp
-        ? new Date((typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : parseInt(msg.messageTimestamp)) * 1000).toISOString()
-        : null;
-      return { text, timestamp: ts };
+      return Array.isArray(d) ? d : [];
     } catch (e) {
-      console.error(`[evo.findLastMessage] Error for ${remoteJid}:`, e);
-      return null;
+      console.error(`[evo.findChats] Error:`, e);
+      return [];
     }
   },
   findWebhook: async (n: string, c: ProviderConfig) => {
@@ -330,35 +329,55 @@ Deno.serve(async (req) => {
           synced++;
         }
 
-        // Fetch last message for each group in batches of 5
+        // Fetch last messages using findChats (single API call instead of N)
         const jids = Object.keys(jidToGroupId);
-        const BATCH_SIZE = 5;
         let messagesFound = 0;
-        console.log(`[sync-groups] Fetching last messages for ${jids.length} groups in batches of ${BATCH_SIZE}...`);
-        for (let i = 0; i < jids.length; i += BATCH_SIZE) {
-          const batch = jids.slice(i, i + BATCH_SIZE);
-          const results = await Promise.allSettled(
-            batch.map(jid => evo.findLastMessage(inst.instance_name, config, jid))
-          );
-          for (let j = 0; j < batch.length; j++) {
-            const r = results[j];
-            if (r.status === "fulfilled" && r.value?.text) {
-              const groupId = jidToGroupId[batch[j]];
-              const upd: any = { last_message: r.value.text };
-              if (r.value.timestamp) upd.last_message_at = r.value.timestamp;
-              await svc.from("grupos").update(upd).eq("id", groupId);
-              messagesFound++;
-            }
-          }
+        console.log(`[sync-groups] Fetching chats from Evolution API (single call)...`);
+        const chats = await evo.findChats(inst.instance_name, config);
+        console.log(`[sync-groups] Got ${chats.length} chats, mapping to groups...`);
+        
+        // Build map: remoteJid → lastMessage data
+        const chatMap = new Map<string, any>();
+        for (const chat of chats) {
+          const jid = chat.remoteJid || chat.id;
+          if (jid && chat.lastMessage) chatMap.set(jid, chat);
+        }
+
+        for (const jid of jids) {
+          const chat = chatMap.get(jid);
+          if (!chat?.lastMessage) continue;
+          const msg = chat.lastMessage;
+          const text = msg?.message?.conversation
+            || msg?.message?.extendedTextMessage?.text
+            || msg?.message?.imageMessage?.caption
+            || msg?.message?.videoMessage?.caption
+            || msg?.message?.documentMessage?.caption
+            || msg?.body
+            || null;
+          if (!text) continue;
+          const ts = msg?.messageTimestamp
+            ? new Date((typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : parseInt(msg.messageTimestamp)) * 1000).toISOString()
+            : new Date().toISOString();
+          const senderName = msg?.pushName || "";
+          const lastMsg = senderName ? `${senderName}: ${text}`.substring(0, 500) : text.substring(0, 500);
+          await svc.from("grupos").update({ last_message: lastMsg, last_message_at: ts }).eq("id", jidToGroupId[jid]);
+          messagesFound++;
         }
         console.log(`[sync-groups] Messages found: ${messagesFound}/${jids.length}`);
 
-        // Webhook diagnostic
+        // Auto-register webhook if not configured
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
         try {
           const webhookInfo = await evo.findWebhook(inst.instance_name, config);
           console.log(`[sync-groups] Webhook config for ${inst.instance_name}:`, JSON.stringify(webhookInfo));
+          const isEnabled = webhookInfo?.enabled === true || webhookInfo?.webhook?.enabled === true;
+          if (!isEnabled) {
+            console.log(`[sync-groups] Webhook not enabled, registering automatically...`);
+            await evo.setWebhook(inst.instance_name, config, webhookUrl);
+          }
         } catch (e) {
-          console.log(`[sync-groups] Could not check webhook config:`, e);
+          console.log(`[sync-groups] Could not check webhook, registering anyway...`);
+          await evo.setWebhook(inst.instance_name, config, webhookUrl);
         }
 
         console.log(`[sync-groups] Done. Synced: ${synced}/${waGroups.length}`);
