@@ -142,6 +142,18 @@ Deno.serve(async (req) => {
       case "connect-instance": {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
+        // Check real status first - if already connected, skip QR flow
+        try {
+          const realState = await evo.connectionState(inst.instance_name, config);
+          console.log(`[connect-instance] Real state for ${inst.instance_name}: ${realState}`);
+          if (realState === "open") {
+            await svc.from("whatsapp_instances").update({ status: "connected", qr_code: null }).eq("id", params.instanceId);
+            result = { alreadyConnected: true, status: "connected" };
+            break;
+          }
+        } catch (e) {
+          console.log(`[connect-instance] Could not check real state, proceeding with QR flow:`, e);
+        }
         const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
         await evo.setWebhook(inst.instance_name, config, webhookUrl);
         const r = await evo.connect(inst.instance_name, config);
@@ -241,14 +253,16 @@ Deno.serve(async (req) => {
       case "check-status": {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
+        const prevStatus = inst.status;
         const state = await evo.connectionState(inst.instance_name, config);
-        console.log(`[check-status] Instance ${inst.instance_name}: state=${state}`);
+        console.log(`[check-status] Instance ${inst.instance_name}: state=${state}, prevStatus=${prevStatus}`);
         const statusMap: Record<string, string> = { open: "connected", close: "disconnected", connecting: "connecting" };
         const newStatus = statusMap[state] || "disconnected";
         const upd: any = { status: newStatus };
         if (newStatus === "connected") upd.qr_code = null;
         await svc.from("whatsapp_instances").update(upd).eq("id", params.instanceId);
-        result = { state, status: newStatus };
+        const justConnected = prevStatus !== "connected" && newStatus === "connected";
+        result = { state, status: newStatus, justConnected };
         break;
       }
       case "health-check": {

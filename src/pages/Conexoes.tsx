@@ -85,6 +85,28 @@ export default function Conexoes() {
   // Clean up polling on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  // Auto-check status for instances stuck in "connecting" on page load
+  const autoCheckedRef = useRef(false);
+  useEffect(() => {
+    if (autoCheckedRef.current || !instances?.length) return;
+    autoCheckedRef.current = true;
+    const connectingInstances = instances.filter((i: any) => i.status === "connecting");
+    connectingInstances.forEach((inst: any) => {
+      checkStatus.mutate(inst.id, {
+        onSuccess: (data: any) => {
+          if (data?.justConnected || data?.status === "connected") {
+            toast({ title: `${inst.instance_name} conectada!`, description: "Sincronizando grupos automaticamente..." });
+            syncGroups.mutate(inst.id, {
+              onSuccess: (syncData: any) => {
+                toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
+              },
+            });
+          }
+        },
+      });
+    });
+  }, [instances]);
+
   const handleSyncGroups = (instanceId: string) => {
     syncGroups.mutate(instanceId, {
       onSuccess: (data: any) => {
@@ -113,6 +135,18 @@ export default function Conexoes() {
   const handleConnect = (instanceId: string, instanceName: string) => {
     connectInstance.mutate(instanceId, {
       onSuccess: (data: any) => {
+        if (data?.alreadyConnected) {
+          toast({ title: "Já conectado!", description: `${instanceName} já está conectada. Sincronizando grupos...` });
+          syncGroups.mutate(instanceId, {
+            onSuccess: (syncData: any) => {
+              toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
+            },
+            onError: (err: any) => {
+              toast({ title: "Erro ao sincronizar grupos", description: err.message, variant: "destructive" });
+            },
+          });
+          return;
+        }
         if (data?.qrCode) {
           setQrModal({ open: true, qrCode: data.qrCode, instanceName, instanceId });
           startPolling(instanceId);
