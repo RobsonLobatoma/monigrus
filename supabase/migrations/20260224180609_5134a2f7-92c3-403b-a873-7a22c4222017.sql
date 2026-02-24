@@ -1,0 +1,1 @@
+UPDATE grupos SET ativo = false WHERE instance_id IS NULL;
