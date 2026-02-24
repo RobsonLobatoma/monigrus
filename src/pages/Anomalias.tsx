@@ -213,15 +213,22 @@ export default function Anomalias() {
     return <Navigate to="/" replace />;
   }
 
+  const summaryCards = [
+    { label: "Total", value: summary.total, color: "hsl(var(--primary))", bgClass: "bg-primary/15 text-primary", icon: <AlertTriangle size={14} /> },
+    { label: "Críticas", value: summary.criticas, color: "hsl(var(--destructive))", bgClass: "bg-destructive/15 text-destructive", icon: <AlertTriangle size={14} /> },
+    { label: "Abertas", value: summary.abertas, color: "hsl(38 90% 50%)", bgClass: "bg-yellow-500/15 text-yellow-600", icon: <AlertTriangle size={14} /> },
+    { label: "Resolvidas", value: summary.resolvidas, color: "hsl(145 63% 42%)", bgClass: "bg-green-500/15 text-green-600", icon: <AlertTriangle size={14} /> },
+  ];
+
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-3 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
-          <AlertTriangle className="text-destructive" size={26} />
-          <h1 className="text-2xl font-bold text-foreground">
+          <AlertTriangle className="text-destructive" size={22} />
+          <h1 className="text-lg font-bold text-foreground">
             Anomalias{" "}
-            <span className="text-muted-foreground font-medium text-xl">(Painel de Alertas)</span>
+            <span className="text-muted-foreground font-medium text-base">(Painel de Alertas)</span>
           </h1>
         </div>
 
@@ -238,11 +245,20 @@ export default function Anomalias() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SummaryCard label="Total" value={summary.total} color="hsl(var(--primary))" />
-        <SummaryCard label="Críticas" value={summary.criticas} color="hsl(var(--destructive))" />
-        <SummaryCard label="Abertas" value={summary.abertas} color="hsl(38 90% 50%)" />
-        <SummaryCard label="Resolvidas" value={summary.resolvidas} color="hsl(145 63% 42%)" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {summaryCards.map((card) => (
+          <div key={card.label} className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-2 shadow-sm">
+            <div
+              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${card.bgClass}`}
+            >
+              {card.icon}
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider leading-none">{card.label}</p>
+              <p className="text-lg font-bold" style={{ color: card.color }}>{card.value}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Filters */}
@@ -420,12 +436,3 @@ export default function Anomalias() {
   );
 }
 
-/* Summary Card */
-function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-2xl font-bold" style={{ color }}>{value}</p>
-    </div>
-  );
-}
