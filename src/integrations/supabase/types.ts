@@ -585,6 +585,7 @@ export type Database = {
           sector_id: string | null
           sla: string
           status: string
+          tag_id: string | null
           team_id: string | null
           ultima_atividade: string | null
           updated_at: string
@@ -604,6 +605,7 @@ export type Database = {
           sector_id?: string | null
           sla?: string
           status?: string
+          tag_id?: string | null
           team_id?: string | null
           ultima_atividade?: string | null
           updated_at?: string
@@ -623,6 +625,7 @@ export type Database = {
           sector_id?: string | null
           sla?: string
           status?: string
+          tag_id?: string | null
           team_id?: string | null
           ultima_atividade?: string | null
           updated_at?: string
@@ -641,6 +644,13 @@ export type Database = {
             columns: ["sector_id"]
             isOneToOne: false
             referencedRelation: "sectors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grupos_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
             referencedColumns: ["id"]
           },
           {
@@ -934,6 +944,41 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tags: {
+        Row: {
+          cor: string
+          created_at: string | null
+          id: string
+          nome: string
+          organization_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          cor?: string
+          created_at?: string | null
+          id?: string
+          nome: string
+          organization_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          cor?: string
+          created_at?: string | null
+          id?: string
+          nome?: string
+          organization_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tags_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
