@@ -1,79 +1,37 @@
 
 
-## Plano: Integração em Tempo Real Evolution API com Painéis de Monitoramento
+## Diagnóstico: Sync-Groups falhando com timeout 504
 
-### Contexto Atual
-- Os painéis (Monitoramento, Hub, Squads) exibem dados mock ou apenas `"Grupo: ${nome}"` na coluna "Conversas"
-- A integração WhatsApp já existe (orchestrator + webhook) mas os dados não fluem para os painéis
-- Existe 1 instância "robsonn" no Evolution API e 1 provider configurado
+### Causa Raiz Identificada
+Os logs de analytics mostram que a chamada `sync-groups` retornou **status 504** com **150.157ms de execução** (timeout de 150 segundos). Isso significa que a Edge Function não conseguiu completar a operação dentro do limite de tempo.
 
-### Arquitetura da Solução
+A causa mais provável é que o `fetch` para a Evolution API (`http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io/group/fetchAllGroups/robsonn`) está demorando demais ou a conexão não é estabelecida a partir dos servidores da Supabase Edge (Deno). O URL usa **HTTP** (não HTTPS) e um domínio sslip.io apontando para um IP privado/local (`72.60.48.134`), o que pode causar problemas de rede a partir da infraestrutura cloud da Supabase.
 
-```text
-┌──────────────┐    webhook     ┌──────────────────┐    realtime    ┌──────────────┐
-│ Evolution API │ ──────────► │ whatsapp-webhook  │ ──────────── │  Frontend    │
-│  (WhatsApp)   │              │ (edge function)   │              │  (painéis)   │
-└──────────────┘              │  ↓ insere em      │              └──────────────┘
-                               │  grupo_messages   │                     ↑
-┌──────────────┐    cron/      │  + atualiza       │    useQuery +       │
-│ whatsapp-    │    manual     │  grupos           │    Realtime         │
-│ orchestrator │ ──────────► └──────────────────┘ ──────────────────────┘
-│ (sync-groups)│
-└──────────────┘
-```
+Além disso, a instância está com status `connecting` (não `connected`), o que pode significar que a instância WhatsApp não está efetivamente conectada para retornar grupos.
 
-### Mudanças Planejadas
+### Plano de Correção
 
-#### 1. Nova Tabela: `grupo_messages` (migração SQL)
-Armazena as últimas mensagens recebidas por grupo WhatsApp, vinculadas à tabela `grupos`:
-- `id`, `grupo_id` (FK → grupos), `instance_id` (FK → whatsapp_instances)
-- `sender_name`, `message_text`, `message_type`, `received_at`
-- RLS: leitura para autenticados, escrita para managers
+#### 1. Adicionar timeout ao fetch da Evolution API
+Envolver todas as chamadas `fetch` do objeto `evo` com `AbortSignal.timeout()` de 25 segundos para evitar que a Edge Function fique presa esperando uma resposta que nunca chega, gerando erros mais claros em vez de timeout 504.
 
-#### 2. Novas Colunas na Tabela `grupos`
-- `whatsapp_group_id` (text) — ID do grupo no WhatsApp para mapeamento
-- `last_message` (text) — última mensagem recebida
-- `last_message_at` (timestamptz) — timestamp da última mensagem
+#### 2. Adicionar logging no sync-groups
+Incluir `console.log` antes e depois de cada etapa (fetch groups, loop de upsert) para que os logs do Edge Function mostrem onde exatamente a execução trava.
 
-#### 3. Atualizar Edge Function: `whatsapp-webhook`
-- Ao receber evento `messages.upsert`, extrair o texto da mensagem e o grupo de origem
-- Inserir na tabela `grupo_messages`
-- Atualizar `grupos.last_message` e `grupos.last_message_at` quando o grupo for mapeado
-- Atualizar `grupos.status` baseado na atividade recente
+#### 3. Tratamento de erro mais informativo
+Quando o fetch para a Evolution API falhar (timeout, rede), retornar uma mensagem de erro clara ao frontend indicando que o servidor da Evolution API não está acessível, em vez de apenas "Failed to fetch".
 
-#### 4. Nova Action no Orchestrator: `sync-groups`
-- Chama `fetchAllGroups` na Evolution API
-- Para cada grupo WhatsApp retornado, faz upsert na tabela `grupos` vinculando pelo `whatsapp_group_id`
-- Atualiza `mensagens` (contagem) e `ultima_atividade`
-
-#### 5. Novo Hook: `useGroupConversations`
-- Query que busca as últimas mensagens de `grupo_messages`
-- Subscreve ao Supabase Realtime para atualizações automáticas (INSERT)
-- Refetch automático quando novas mensagens chegam
-
-#### 6. Atualizar Páginas de Monitoramento
-- **Monitoramento.tsx, Hub.tsx, Squads.tsx**: substituir `descricao: "Grupo: ${g.nome}"` por `g.last_message || "Sem mensagens"` 
-- Usar dados reais da tabela `grupos` (last_message, status) em vez de mock
-- Adicionar Realtime subscription para atualizar a tabela automaticamente sem refresh
-
-#### 7. Habilitar Supabase Realtime
-- Ativar Realtime na tabela `grupos` e `grupo_messages` para push updates
+#### 4. Verificação de status da instância
+Antes de tentar sync-groups, verificar se a instância está com status `connected`. Se estiver `connecting` ou `disconnected`, retornar erro imediato informando que a instância precisa estar conectada.
 
 ### Detalhes Técnicos
 
-**Fluxo de dados em tempo real:**
-1. Mensagem chega no WhatsApp → Evolution API envia webhook
-2. `whatsapp-webhook` processa, salva em `grupo_messages`, atualiza `grupos.last_message`
-3. Supabase Realtime detecta mudança em `grupos` e notifica o frontend
-4. React Query invalida a cache, tabela atualiza automaticamente
+**Arquivo afetado:** `supabase/functions/whatsapp-orchestrator/index.ts`
 
-**Mapeamento de grupos:**
-- A action `sync-groups` conecta os grupos do WhatsApp à tabela `grupos` via `whatsapp_group_id`
-- O webhook usa esse mapeamento para direcionar mensagens ao grupo correto
+**Mudanças específicas:**
+- Adicionar `signal: AbortSignal.timeout(25000)` em todas as chamadas `fetch` do objeto `evo`
+- No case `sync-groups`, verificar `inst.status === "connected"` antes de prosseguir
+- Adicionar `console.log` para debugging: antes do fetch, após receber grupos, durante o loop
+- Melhorar a mensagem de erro do catch para diferenciar timeout de outros erros
 
-**Campos afetados nos painéis:**
-- Coluna "Conversas": mostra `last_message` real do grupo
-- Coluna "Status": atualizado com base na atividade (sem resposta há X horas → CRÍTICO)
-- Coluna "Data/Hora": usa `last_message_at` real
-- Score: calculado com base em métricas reais de atividade
+**Nota importante:** O URL base do provider usa HTTP e um domínio sslip.io com IP (`72.60.48.134`). Se este IP não for acessível publicamente (ex: rede interna ou VPN), a Edge Function da Supabase nunca conseguirá se conectar. Nesse caso, seria necessário expor a Evolution API via HTTPS com um domínio público, ou usar um túnel/proxy.
 
