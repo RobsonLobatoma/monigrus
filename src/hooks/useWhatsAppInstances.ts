@@ -85,3 +85,11 @@ export function useSyncGroups() {
     },
   });
 }
+
+export function useCheckStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => invoke("check-status", { instanceId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["whatsapp-instances"] }),
+  });
+}
