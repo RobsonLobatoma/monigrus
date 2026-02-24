@@ -1,78 +1,30 @@
 
 
-## Plano: Interligar Hub, Squads e Monitoramento com as configuracoes dinamicas
+## Plano: Compactar Hero Banner e KPI Cards no Hub do Colaborador
 
-### Problema atual
+### Objetivo
+Reduzir a altura das secoes superiores (hero banner + KPI cards) para diminuir a rolagem e dar mais visibilidade a tabela de monitoramento.
 
-As tres paginas nao estao sincronizadas com as configuracoes do sistema:
+### Arquivo: `src/pages/Hub.tsx`
 
-| Configuracao          | Monitoramento (GLOBAL) | Squads | Hub do Colaborador |
-|----------------------|----------------------|--------|-------------------|
-| Satisfacao (cores)    | Dinamico             | Dinamico | Hardcoded        |
-| Score (faixas)        | Dinamico             | Dinamico | Hardcoded        |
-| Status (cores)        | Dinamico             | Dinamico | Nenhum           |
-| Palavras-chave        | Dinamico             | Nenhum  | Nenhum           |
+#### 1. Compactar o Hero Banner (linhas 249-258)
+- Reduzir padding de `px-8 py-7` para `px-6 py-4`
+- Reduzir titulo de `text-3xl` para `text-xl`
+- Reduzir subtitulo de `text-base mb-3` para `text-sm mb-1`
+- Reduzir nota inferior de `text-[11px]` para `text-[10px]`
+- Manter o gradiente e a identidade visual
 
-O Monitoramento GLOBAL ja e o centro do sistema e usa todas as configuracoes. O objetivo e propagar essa mesma logica para Hub e Squads.
+#### 2. Compactar os KPI Cards (linhas 322-337)
+- Reduzir padding de `px-5 py-4` para `px-4 py-3`
+- Reduzir espaco interno de `space-y-3` para `space-y-1`
+- Reduzir icone container de `w-9 h-9` para `w-7 h-7`
+- Reduzir icone de `size={18}` para `size={14}`
+- Reduzir valor de `text-2xl` para `text-xl`
+- Manter labels e subtitulos nos mesmos tamanhos
 
----
-
-### Arquivo 1: `src/pages/Hub.tsx`
-
-**1. Adicionar imports de `useMonitoringSettings`**
-
-**2. Carregar as 4 categorias de configuracoes:**
-```
-const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
-const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
-const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
-const { data: keywordSettings = [] } = useMonitoringSettings("PALAVRA_CHAVE");
-```
-
-**3. Substituir `SAT_STYLE` hardcoded por `satStyleMap` dinamico** (mesmo memo do Monitoramento):
-- Usa as cores da tabela `monitoring_settings` como base
-- Fallback para cores padrao se nenhuma configuracao existir
-
-**4. Adicionar `statusStyleMap`** para cores dinamicas dos status (igual ao Monitoramento)
-
-**5. Substituir `mapStatusToSatisfacao` e `statusToScore` por `scoreToSatisfacao`** dinamico:
-- Usa as faixas de score configuradas no banco
-- Fallback: >= 71 Otimo, >= 41 Regular, < 41 Ruim
-
-**6. Adicionar `activeKeywords`** e funcao `renderDescricao` para destacar palavras-chave na coluna Descricao
-
-**7. Adicionar funcao `isLightColor`** para calcular contraste de texto sobre fundo colorido
-
-**8. Atualizar a construcao de `GRUPOS`**: usar `scoreToSatisfacao(score)` em vez de `mapStatusToSatisfacao(g.status)`, e calcular score baseado em `mensagens` em vez de `statusToScore`
-
-**9. Atualizar renderizacao da tabela**:
-- Coluna SATISFACAO: usar `satStyleMap[row.satisfacao]` em vez de `SAT_STYLE[row.satisfacao]`
-- Coluna STATUS: renderizar com `statusStyleMap` (badge colorido quando configurado)
-- Coluna DESCRICAO: usar `renderDescricao` para highlight de keywords
-
----
-
-### Arquivo 2: `src/pages/Squads.tsx`
-
-**1. Carregar `PALAVRA_CHAVE`:**
-```
-const { data: keywordSettings = [] } = useMonitoringSettings("PALAVRA_CHAVE");
-```
-
-**2. Adicionar `activeKeywords` memo e funcoes `renderDescricao` / `escapeRegex`** (mesma logica do Monitoramento)
-
-**3. Atualizar coluna DESCRICAO** na tabela "Grupos do Squad": usar `renderDescricao(row.descricao)` em vez de texto simples entre aspas
-
----
+#### 3. Reduzir gap geral
+- Reduzir `space-y-6` do container principal para `space-y-4`
 
 ### Resultado
-
-Apos estas alteracoes, qualquer mudanca feita em Configuracoes > Monitoramento (palavras-chave, cores de satisfacao, faixas de score, cores de status) sera refletida automaticamente e instantaneamente nas tres paginas, via React Query. O Monitoramento GLOBAL permanece o centro/referencia, e Hub e Squads seguem exatamente as mesmas regras.
-
-### Detalhes tecnicos
-
-- Todas as paginas usam `useMonitoringSettings` (React Query), que ja faz cache e invalidacao automatica
-- A funcao `isLightColor` calcula se o texto deve ser preto ou branco sobre o fundo colorido
-- A funcao `escapeRegex` escapa caracteres especiais para uso seguro em RegExp
-- Nenhuma alteracao de banco de dados e necessaria; a tabela `monitoring_settings` ja suporta todas as categorias
+Aproximadamente 30-40% menos altura nas secoes superiores, mantendo todas as informacoes visiveis e a identidade visual intacta.
 
