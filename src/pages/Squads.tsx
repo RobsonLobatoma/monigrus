@@ -28,6 +28,7 @@ import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useOperationalMetrics } from "@/hooks/useOperationalMetrics";
 import { useGrupos } from "@/hooks/useGrupos";
 import { useGroupConversations } from "@/hooks/useGroupConversations";
+import { useTeams } from "@/hooks/useTeams";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { CapacityAlert } from "@/components/CapacityAlert";
 import { Navigate } from "react-router-dom";

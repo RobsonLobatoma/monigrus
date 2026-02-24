@@ -4,6 +4,7 @@ import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { useGrupos } from "@/hooks/useGrupos";
 import { useGroupConversations } from "@/hooks/useGroupConversations";
+import { useTeams } from "@/hooks/useTeams";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { Navigate } from "react-router-dom";
@@ -94,6 +95,7 @@ function parseDateString(dateStr: string): Date | null {
 export default function Monitoramento() {
   const { data: dbGrupos } = useGrupos();
   useGroupConversations();
+  const { data: teams } = useTeams();
   const { role, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
@@ -152,6 +154,12 @@ export default function Monitoramento() {
     return <Navigate to="/" replace />;
   }
 
+  const teamMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    teams?.forEach(t => { m[t.id] = t.name; });
+    return m;
+  }, [teams]);
+
   const data = useMemo((): MonitoringRow[] => {
     if (dbGrupos && dbGrupos.length > 0) {
       return dbGrupos.map((g) => {
@@ -163,7 +171,7 @@ export default function Monitoramento() {
             : g.ultima_atividade ?? "—",
           grupo: g.nome,
           gestorTrafego: g.gestor ?? "—",
-          squad: "—",
+          squad: g.team_id ? teamMap[g.team_id] ?? "—" : "—",
           satisfacao: scoreToSatisfacao(score),
           score,
           status: g.status ?? "PENDENTE",
@@ -172,7 +180,7 @@ export default function Monitoramento() {
       });
     }
     return mockData;
-  }, [dbGrupos, scoreToSatisfacao]);
+  }, [dbGrupos, scoreToSatisfacao, teamMap]);
 
   const dateRange = useMemo(() => {
     const now = new Date();

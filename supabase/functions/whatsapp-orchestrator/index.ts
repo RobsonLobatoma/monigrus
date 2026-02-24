@@ -169,6 +169,16 @@ Deno.serve(async (req) => {
           throw new Error(`A instância "${inst.instance_name}" não está conectada (status: ${inst.status}). Conecte a instância antes de sincronizar grupos.`);
         }
         const { config } = await resolveProvider(inst.provider_id);
+
+        // Fetch authenticated user's profile for gestor enrichment
+        const { data: profile } = await svc.from("user_profiles")
+          .select("full_name, team_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const gestorName = profile?.full_name ?? null;
+        const gestorTeamId = profile?.team_id ?? null;
+        console.log(`[sync-groups] Gestor: ${gestorName}, team_id: ${gestorTeamId}`);
+
         console.log(`[sync-groups] Fetching groups from Evolution API...`);
         const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
         console.log(`[sync-groups] Got ${waGroups.length} groups, starting upsert...`);
@@ -177,13 +187,23 @@ Deno.serve(async (req) => {
           const jid = wg.id || wg.jid;
           const name = wg.subject || wg.name || jid;
           if (!jid) continue;
-          const { data: existing } = await svc.from("grupos").select("id").eq("whatsapp_group_id", jid).maybeSingle();
+          const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
           if (existing) {
-            await svc.from("grupos").update({ nome: name, ultima_atividade: new Date().toISOString() }).eq("id", existing.id);
+            const upd: any = { nome: name, ultima_atividade: new Date().toISOString() };
+            // Enrich existing groups that have no gestor
+            if (!existing.gestor && gestorName) {
+              upd.gestor = gestorName;
+              upd.gestor_id = user.id;
+            }
+            if (gestorTeamId) upd.team_id = gestorTeamId;
+            await svc.from("grupos").update(upd).eq("id", existing.id);
           } else {
             const { data: byName } = await svc.from("grupos").select("id").eq("nome", name).is("whatsapp_group_id", null).maybeSingle();
-            if (byName) { await svc.from("grupos").update({ whatsapp_group_id: jid, ultima_atividade: new Date().toISOString() }).eq("id", byName.id); }
-            else { await svc.from("grupos").insert({ nome: name, whatsapp_group_id: jid, status: "PENDENTE", sla: "DENTRO DO SLA", ultima_atividade: new Date().toISOString() }); }
+            if (byName) {
+              await svc.from("grupos").update({ whatsapp_group_id: jid, ultima_atividade: new Date().toISOString(), gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId }).eq("id", byName.id);
+            } else {
+              await svc.from("grupos").insert({ nome: name, whatsapp_group_id: jid, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, status: "PENDENTE", sla: "DENTRO DO SLA", ultima_atividade: new Date().toISOString() });
+            }
           }
           synced++;
         }
