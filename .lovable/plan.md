@@ -1,93 +1,139 @@
 
 
-## Plano: Preenchimento Automático dos Painéis de Monitoramento Após Sync
+## Analise Completa da Integração Evolution API
 
-### Situação Atual
+### Problemas Identificados
 
-A tabela `grupos` está vazia. Quando o `sync-groups` funcionar (instância conectada), ele cria registros com apenas `nome`, `whatsapp_group_id`, `status=PENDENTE` e `ultima_atividade`. As colunas ficam assim:
+Analisei os logs, banco de dados, webhook, orchestrator e analytics. Existem **3 problemas fundamentais** que impedem a conexao e sincronizacao de funcionar.
 
-| Coluna | Fonte Atual | Problema |
-|--------|------------|----------|
-| DATA/HORA | `last_message_at` ou `ultima_atividade` | Funciona parcialmente (sem mensagens, mostra data do sync) |
-| GRUPO | `nome` | Funciona |
-| GESTOR DE TRÁFEGO | `gestor` | Nunca preenchido pelo sync |
-| SQUAD | Hardcoded `"—"` | Nunca resolvido (campo `team_id` existe mas UI ignora) |
-| SATISFAÇÃO | Derivado do score | Funciona (score começa em 50 sem mensagens) |
-| SCORE | `Math.min(100, mensagens/3)` | Começa em 50 (fallback), atualiza com mensagens |
-| STATUS | `status` | Funciona (default PENDENTE) |
-| CONVERSAS | `last_message` | Vazio até chegar mensagem via webhook |
+---
 
-### Correções Necessárias
+### Problema 1: Webhook nao configurado na Evolution API
 
-#### 1. Orchestrator: Enriquecer sync-groups com gestor e team_id
+A tabela `whatsapp_webhooks_log` esta **completamente vazia**. Isso significa que a Evolution API nunca enviou nenhum evento de volta para o Supabase. O fluxo esperado e:
+
+```text
+1. Usuario clica "Conectar" → orchestrator chama /instance/connect → retorna QR Code → status = "connecting"
+2. Usuario escaneia QR → Evolution API envia evento "connection.update" via webhook → webhook function atualiza status = "connected"
+3. Com status "connected", sync-groups funciona
+```
+
+O passo 2 nunca acontece porque **ninguem configurou a URL do webhook na Evolution API**. Quando a instancia e criada ou conectada, o orchestrator nao registra o webhook URL. A instancia fica presa em "connecting" eternamente.
+
+**Correcao:** Ao criar a instancia (`create-instance`), chamar o endpoint da Evolution API para configurar o webhook apontando para `https://nmmbjptgrvsjqeytmxmw.supabase.co/functions/v1/whatsapp-webhook`. Tambem configurar ao conectar (`connect-instance`) como fallback.
+
+---
+
+### Problema 2: Status da instancia nunca atualiza para "connected"
+
+Como consequencia do Problema 1, a instancia "robsonn" esta presa com `status: "connecting"` desde que foi criada. O `sync-groups` verifica `inst.status !== "connected"` e rejeita com erro.
+
+**Correcao adicional:** Criar uma action `check-status` que consulta diretamente a Evolution API (`/instance/connectionState/{instanceName}`) e atualiza o banco. Isso serve como fallback caso o webhook falhe. A UI tambem deve chamar esse check periodicamente ou ao clicar em "Conectar".
+
+---
+
+### Problema 3: Evolution API possivelmente inacessivel
+
+O ultimo log de erro do orchestrator mostra:
+```
+Orchestrator error: A Evolution API não respondeu dentro de 25 segundos. TimeoutError
+```
+
+A URL configurada e `http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io` (HTTP, nao HTTPS). Supabase Edge Functions rodam na cloud e precisam acessar esse IP publicamente. Se `72.60.48.134` nao for um IP publico acessivel, o fetch sempre vai dar timeout.
+
+**Porem**, existem chamadas que retornaram 200 (list-providers, get-instances, get-qr-code) com sucesso em ~400-900ms. Isso sugere que o servidor **as vezes** responde. O timeout de 25s pode nao ser suficiente para operacoes mais pesadas como `fetchAllGroups`, ou o servidor pode estar instavel.
+
+**Correcao:** Nao ha correcao de codigo possivel para isso - depende da infraestrutura do usuario. Mas podemos melhorar o diagnostico adicionando logs e retornando informacoes mais claras.
+
+---
+
+### Plano de Correcao Definitivo
+
+#### 1. Registrar webhook automaticamente ao criar/conectar instancia
 **Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
 
-No `sync-groups`, após criar/atualizar o grupo, buscar o usuário autenticado e associar como gestor. Também aceitar um parâmetro opcional `teamId` para vincular o grupo a um squad.
+Adicionar ao objeto `evo` um metodo `setWebhook` que chama `POST /webhook/set/{instanceName}` da Evolution API com a URL do webhook do Supabase:
 
-Alteracoes:
-- Buscar o `user_profiles` do usuario autenticado para obter `full_name` e `team_id`
-- Ao criar novo grupo, popular `gestor` com o nome do usuario, `gestor_id` com o user_id, e `team_id` com o team do usuario
-- Grupos existentes sem gestor tambem recebem o gestor do usuario autenticado
-
-#### 2. UI: Resolver coluna SQUAD pelo team_id
-**Arquivos:** `src/pages/Monitoramento.tsx`, `src/pages/Hub.tsx`, `src/pages/Squads.tsx`
-
-Todas as 3 paginas tem `squad: "—"` hardcoded. Corrigir para:
-- Importar `useTeams` e criar um mapa `teamId -> teamName`
-- No mapeamento de `dbGrupos`, resolver `squad` via `teams.find(t => t.id === g.team_id)?.name ?? "—"`
-
-#### 3. Webhook: Garantir atualização correta do contador de mensagens
-**Arquivo:** `supabase/functions/whatsapp-webhook/index.ts`
-
-O webhook ja atualiza `last_message`, `last_message_at` e incrementa `mensagens`. Porem, o incremento usa duas queries separadas (select + update) que pode ter race condition. Usar uma unica operacao RPC ou consolidar.
-
-Alem disso, o webhook precisa tambem atualizar o `status` do grupo automaticamente baseado na atividade (ex: se mensagem recebida e nao respondida em X tempo, marcar como CRITICO).
-
-#### 4. Realtime: Ja funciona
-O hook `useGroupConversations` ja escuta mudancas em `grupos` e `grupo_messages` via Supabase Realtime, invalidando a query. Nenhuma alteração necessaria.
-
-### Detalhes Técnicos
-
-**Mudanca no sync-groups (orchestrator):**
-```
-// Antes do loop de upsert:
-const { data: profile } = await svc.from("user_profiles")
-  .select("full_name, team_id")
-  .eq("user_id", user.id)
-  .maybeSingle();
-const gestorName = profile?.full_name ?? null;
-const gestorTeamId = profile?.team_id ?? null;
-
-// No insert de novo grupo:
-await svc.from("grupos").insert({
-  nome: name,
-  whatsapp_group_id: jid,
-  gestor: gestorName,
-  gestor_id: user.id,
-  team_id: gestorTeamId,
-  status: "PENDENTE",
-  sla: "DENTRO DO SLA",
-  ultima_atividade: new Date().toISOString()
-});
-```
-
-**Mudanca nas 3 paginas (squad resolution):**
 ```typescript
-const { data: teams } = useTeams();
-const teamMap = useMemo(() => {
-  const m: Record<string, string> = {};
-  teams?.forEach(t => { m[t.id] = t.name; });
-  return m;
-}, [teams]);
-
-// No mapeamento:
-squad: g.team_id ? teamMap[g.team_id] ?? "—" : "—",
+setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
+  await safeJson(await fetch(`${c.base_url}/webhook/set/${n}`, {
+    method: "POST",
+    headers: headers(c),
+    body: JSON.stringify({
+      url: webhookUrl,
+      webhook_by_events: false,
+      webhook_base64: false,
+      events: [
+        "connection.update",
+        "qrcode.updated",
+        "messages.upsert",
+        "messages.update",
+        "status.instance"
+      ]
+    }),
+    signal: sig()
+  }));
+}
 ```
 
-### Resumo das Alteracoes
+Chamar `evo.setWebhook()` dentro de `create-instance` e `connect-instance`, usando a URL:
+`https://nmmbjptgrvsjqeytmxmw.supabase.co/functions/v1/whatsapp-webhook`
 
-1. **`whatsapp-orchestrator/index.ts`** - sync-groups popula `gestor`, `gestor_id`, `team_id` automaticamente
-2. **`Monitoramento.tsx`** - resolve SQUAD via `useTeams` + `teamMap`
-3. **`Hub.tsx`** - resolve SQUAD via `useTeams` + `teamMap`
-4. **`Squads.tsx`** - resolve SQUAD via `useTeams` + `teamMap` (ja tem teams carregado)
+#### 2. Adicionar action `check-status` para polling direto
+**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
+
+Nova action que consulta `/instance/connectionState/{instanceName}` e atualiza o status no banco:
+
+```typescript
+case "check-status": {
+  const inst = await getInst(params.instanceId);
+  const { config } = await resolveProvider(inst.provider_id);
+  const d = await safeJson(await fetch(
+    `${config.base_url}/instance/connectionState/${inst.instance_name}`,
+    { headers: authOnly(config), signal: sig() }
+  ));
+  const state = d?.instance?.state || d?.state || "unknown";
+  const statusMap: Record<string, string> = { open: "connected", close: "disconnected", connecting: "connecting" };
+  const newStatus = statusMap[state] || "disconnected";
+  await svc.from("whatsapp_instances").update({ status: newStatus }).eq("id", params.instanceId);
+  if (newStatus === "connected") {
+    await svc.from("whatsapp_instances").update({ qr_code: null }).eq("id", params.instanceId);
+  }
+  result = { state, status: newStatus };
+  break;
+}
+```
+
+#### 3. UI: Polling automatico de status e botao de verificar conexao
+**Arquivos:** `src/hooks/useWhatsAppInstances.ts`, `src/pages/Conexoes.tsx`
+
+- Adicionar hook `useCheckStatus` que chama a action `check-status`
+- No fluxo de `handleConnect`, apos exibir o QR Code, iniciar um polling a cada 5 segundos chamando `check-status` ate o status mudar para "connected" (max 60s)
+- Adicionar botao "Verificar Status" na lista de instancias
+
+#### 4. UI: Apos status mudar para "connected", sincronizar automaticamente
+**Arquivo:** `src/pages/Conexoes.tsx`
+
+Quando o polling detectar que o status mudou para "connected", automaticamente disparar `syncGroups.mutate(instanceId)` e exibir toast de sucesso.
+
+---
+
+### Detalhes Tecnicos
+
+**Mudancas no orchestrator (`whatsapp-orchestrator/index.ts`):**
+- Novo metodo `evo.setWebhook()`
+- `create-instance`: chamar `setWebhook` apos criar instancia
+- `connect-instance`: chamar `setWebhook` apos conectar
+- Novo case `check-status` para polling de estado
+
+**Mudancas no hook (`useWhatsAppInstances.ts`):**
+- Nova funcao `useCheckStatus` mutation
+- Logica de polling com `setInterval` + cleanup
+
+**Mudancas na pagina (`Conexoes.tsx`):**
+- Polling automatico quando QR modal esta aberto
+- Sync automatico quando status muda para "connected"
+- Botao "Verificar Status" por instancia
+
+**Nota importante:** O webhook URL do Supabase (`https://...supabase.co/functions/v1/whatsapp-webhook`) precisa estar acessivel pela Evolution API. Como a Evolution API roda no IP `72.60.48.134`, ela precisa ter acesso a internet para enviar eventos para o Supabase. Se estiver em rede interna sem acesso externo, os webhooks nunca chegarao.
 
