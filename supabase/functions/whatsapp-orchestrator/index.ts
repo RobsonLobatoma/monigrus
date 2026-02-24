@@ -178,8 +178,9 @@ Deno.serve(async (req) => {
       }
       if (!providerRow) throw new Error("No active provider found");
 
-      const baseUrl = providerRow.config?.base_url;
-      if (!baseUrl) throw new Error("Provider base_url is not configured. Please set it in Conexões > Providers.");
+      const rawBaseUrl = providerRow.config?.base_url;
+      if (!rawBaseUrl) throw new Error("Provider base_url is not configured. Please set it in Conexões > Providers.");
+      const baseUrl = rawBaseUrl.replace(/\/+$/, ""); // strip trailing slashes
 
       const secretName = providerRow.config?.api_key_secret_name || "EVOLUTION_API_KEY";
       const apiKey = Deno.env.get(secretName) || "";
