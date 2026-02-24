@@ -1,79 +1,67 @@
 
 
-## Diagnostico
+## Diagnostico dos 3 Problemas
 
-Analisei os logs, banco de dados e codigo completo. Os problemas sao:
+### Estado Atual do Banco
+- 93 grupos na tabela `grupos`, todos com `last_message = null` e `last_message_at = null`
+- 0 registros em `grupo_messages` (webhook nunca recebeu mensagens)
+- 1 instancia ativa: "robsonn" (connected)
+- Instancia deletada ("pessoal") deixou seus grupos no banco
 
-1. **Instancias presas em "connecting"**: Ambas as instancias (robsonn, pessoal) estao com status "connecting" no banco mas ninguem verificou o estado real na Evolution API. O `check-status` nunca foi chamado com sucesso (0 logs). O polling apos QR code nao esta funcionando corretamente.
+### Problema 1: Sincronizacao nao e vinculada a instancia
+A tabela `grupos` nao tem coluna `instance_id`. Quando voce sincroniza, todos os grupos sao inseridos sem referencia a qual instancia os trouxe. Quando a instancia e removida, os grupos ficam orfaos.
 
-2. **Webhook nunca recebeu eventos**: 0 logs no webhook. Mesmo com `setWebhook` configurado com sucesso, a Evolution API no IP `72.60.48.134` pode nao conseguir alcancar o URL do Supabase para enviar eventos.
+**Correcao:**
+- Adicionar coluna `instance_id` (uuid, nullable) na tabela `grupos` via migracao
+- No `sync-groups` do orchestrator, gravar `instance_id` em cada grupo sincronizado
+- Monitoramento filtra apenas grupos que tenham `instance_id` de uma instancia existente
 
-3. **Tabela `grupos` vazia**: 0 registros. Como o sync-groups exige status "connected" e nenhuma instancia chegou a esse estado, os paineis de monitoramento mostram apenas dados mock.
+### Problema 2: Coluna "Conversas" vazia
+`last_message` e `null` para todos os 93 grupos e `grupo_messages` tem 0 registros. O webhook da Evolution API nunca recebeu eventos de mensagem (problema de infra - a Evolution nao consegue alcancar o Supabase). A coluna mostra "Sem mensagens" porque nao ha dados.
 
-4. **Monitoramento mostra mock data**: O codigo em `Monitoramento.tsx` (linha 164) retorna mockData quando `dbGrupos.length === 0`. Isso e esperado, mas confuso para o usuario.
+**Correcao:**
+- Nao depender apenas do webhook para conversas
+- Durante o `sync-groups`, buscar a ultima mensagem de cada grupo via Evolution API (`/chat/findMessages/{instanceName}`) e salvar em `last_message` e `last_message_at`
+- Alternativa mais leve: usar o endpoint `/group/fetchAllGroups` que ja retorna `lastMessage` no payload (se disponivel na versao da Evolution API)
 
-### Causa Raiz
-O fluxo de conexao depende do webhook da Evolution API para atualizar o status, mas o webhook nunca chega. O polling de fallback (`check-status`) deveria resolver isso, mas nao esta sendo executado efetivamente.
+### Problema 3: Dados persistem apos remover instancia
+`delete-instance` apaga apenas de `whatsapp_instances` mas nao limpa os grupos associados.
 
----
-
-## Plano de Correcao
-
-### 1. Connect-instance com verificacao previa de status real
-**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
-
-Antes de pedir QR code, o `connect-instance` deve verificar o estado real da instancia na Evolution API via `connectionState`. Se ja estiver "open" (conectada), atualizar o banco para "connected" e retornar sem QR code. Isso resolve instancias que foram conectadas mas cujo webhook nao chegou.
-
-```
-case "connect-instance": {
-  const inst = await getInst(params.instanceId);
-  const { config } = await resolveProvider(inst.provider_id);
-  
-  // Check real status first
-  try {
-    const realState = await evo.connectionState(inst.instance_name, config);
-    if (realState === "open") {
-      await svc.from("whatsapp_instances").update({ status: "connected", qr_code: null }).eq("id", params.instanceId);
-      result = { alreadyConnected: true, status: "connected" };
-      break;
-    }
-  } catch {}
-  
-  // If not connected, proceed with QR code flow
-  const webhookUrl = ...;
-  await evo.setWebhook(...);
-  const r = await evo.connect(...);
-  ...
-}
-```
-
-### 2. Check-status com auto-sync
-**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
-
-Quando `check-status` detectar que a instancia mudou para "connected", retornar um flag `justConnected: true` para a UI saber que deve sincronizar automaticamente.
-
-### 3. UI: Auto-check ao carregar pagina
-**Arquivo:** `src/pages/Conexoes.tsx`
-
-Ao montar a pagina, para cada instancia com status "connecting", disparar automaticamente um `check-status`. Se alguma voltar como "connected", disparar sync-groups. Isso captura conexoes que aconteceram enquanto o usuario nao estava na pagina.
-
-### 4. UI: HandleConnect trata alreadyConnected
-**Arquivo:** `src/pages/Conexoes.tsx`
-
-Quando `connect-instance` retornar `alreadyConnected: true`, pular o QR modal e ir direto para sync de grupos com toast de sucesso.
-
-### 5. Monitoring: Mensagem clara quando sem dados reais
-**Arquivo:** `src/pages/Monitoramento.tsx`
-
-Em vez de mostrar dados mock que confundem, mostrar uma mensagem indicando que nenhum grupo foi sincronizado ainda, com instrucao para ir a pagina de Conexoes.
+**Correcao:**
+- No `delete-instance` do orchestrator, apos deletar a instancia, marcar como `ativo = false` todos os grupos cujo `instance_id` seja o da instancia deletada
+- Isso faz com que `useGrupos()` (que filtra `ativo = true`) automaticamente os exclua do Monitoramento
 
 ---
 
-### Resumo dos Arquivos
+## Plano de Implementacao
+
+### 1. Migracao: Adicionar `instance_id` a tabela `grupos`
+```sql
+ALTER TABLE grupos ADD COLUMN instance_id uuid REFERENCES whatsapp_instances(id) ON DELETE SET NULL;
+```
+
+### 2. Orchestrator: `sync-groups` grava `instance_id`
+Ao inserir/atualizar cada grupo, incluir `instance_id: params.instanceId`.
+
+### 3. Orchestrator: `sync-groups` busca ultima mensagem
+Apos mapear os grupos, tentar buscar `lastMessage` do payload do `fetchAllGroups` (a Evolution API v2 retorna isso). Se disponivel, salvar em `last_message` e `last_message_at`.
+
+### 4. Orchestrator: `delete-instance` limpa grupos
+Apos deletar a instancia de `whatsapp_instances`, executar:
+```sql
+UPDATE grupos SET ativo = false WHERE instance_id = '<instanceId>'
+```
+
+### 5. Monitoramento: sem alteracoes necessarias
+O `useGrupos()` ja filtra `ativo = true`, entao grupos de instancias deletadas desaparecem automaticamente.
+
+---
+
+### Arquivos Modificados
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `whatsapp-orchestrator/index.ts` | connect-instance verifica status real antes de QR; check-status retorna flag justConnected |
-| `Conexoes.tsx` | Auto-check de status ao carregar; handleConnect trata alreadyConnected; auto-sync |
-| `Monitoramento.tsx` | Remover mock data, mostrar mensagem de "nenhum grupo sincronizado" quando tabela vazia |
+| Migracao SQL | Adicionar coluna `instance_id` em `grupos` |
+| `whatsapp-orchestrator/index.ts` | sync-groups: gravar instance_id + extrair lastMessage; delete-instance: desativar grupos |
+| Nenhuma mudanca no frontend | `useGrupos` e Monitoramento ja funcionam corretamente com os dados |
 
