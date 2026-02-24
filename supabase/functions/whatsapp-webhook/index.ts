@@ -113,30 +113,22 @@ Deno.serve(async (req) => {
                   .eq("whatsapp_group_id", remoteJid)
                   .is("grupo_id", null);
 
-                // Update last_message on grupos
+                // Update last_message and increment message count atomically
                 const now = new Date().toISOString();
+                const { data: current } = await supabase
+                  .from("grupos")
+                  .select("mensagens")
+                  .eq("id", grupo.id)
+                  .single();
                 await supabase
                   .from("grupos")
                   .update({
                     last_message: `${senderName}: ${messageText}`.substring(0, 500),
                     last_message_at: now,
                     ultima_atividade: now,
-                    mensagens: grupo.id ? undefined : 0, // increment handled below
+                    mensagens: (current?.mensagens || 0) + 1,
                   })
                   .eq("id", grupo.id);
-
-                // Increment message count
-                const { data: current } = await supabase
-                  .from("grupos")
-                  .select("mensagens")
-                  .eq("id", grupo.id)
-                  .single();
-                if (current) {
-                  await supabase
-                    .from("grupos")
-                    .update({ mensagens: (current.mensagens || 0) + 1 })
-                    .eq("id", grupo.id);
-                }
               }
             }
           }
