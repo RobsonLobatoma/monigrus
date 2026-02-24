@@ -1,8 +1,16 @@
 import { useState, useMemo } from "react";
-import { Shield, Search, Users, AlertTriangle, TrendingUp } from "lucide-react";
+import { Shield, Search, Users, AlertTriangle, TrendingUp, CalendarIcon, X, Filter } from "lucide-react";
+import { subDays, format } from "date-fns";
+import { DateRange } from "react-day-picker";
 import { useGrupos } from "@/hooks/useGrupos";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { Navigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
 type HubStatus   = "RESOLVIDO" | "PENDENTE" | "CRÍTICO";
 
@@ -82,15 +90,26 @@ function statusToScore(status: string): number {
   return Math.floor(Math.random() * 20) + 45;
 }
 
+function parseDateString(dateStr: string): Date | null {
+  if (!dateStr || dateStr === "—") return null;
+  const clean = dateStr.replace("\n", " ").trim();
+  // Try DD/MM/YYYY HH:mm
+  const match = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})$/);
+  if (match) {
+    return new Date(+match[3], +match[2] - 1, +match[1], +match[4], +match[5]);
+  }
+  // Try ISO
+  const d = new Date(clean);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function Hub() {
   const { data: dbGrupos } = useGrupos();
   const { role, userName, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
-
-  // GERENTE não acessa Hub
-  if (!roleLoading && role === "GERENTE") {
-    return <Navigate to="/" replace />;
-  }
+  const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
+  const [filterGestor, setFilterGestor] = useState("all");
 
   const displayName = userName ?? "Colaborador";
 
@@ -111,16 +130,54 @@ export default function Hub() {
     return MOCK_GRUPOS;
   }, [dbGrupos]);
 
-  const totalGrupos = GRUPOS.length;
-  const criticos    = GRUPOS.filter((g) => g.status === "CRÍTICO").length;
-  const scoreMedia  = GRUPOS.length > 0 ? Math.round(GRUPOS.reduce((a, g) => a + g.score, 0) / GRUPOS.length) : 0;
-  const resolvidos  = GRUPOS.filter((g) => g.status === "RESOLVIDO").length;
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (filterPeriod) {
+      case "7d": return { from: subDays(now, 7), to: now };
+      case "14d": return { from: subDays(now, 14), to: now };
+      case "30d": return { from: subDays(now, 30), to: now };
+      case "custom": return customDateRange ? { from: customDateRange.from, to: customDateRange.to } : { from: undefined, to: undefined };
+      default: return { from: undefined, to: undefined };
+    }
+  }, [filterPeriod, customDateRange]);
 
-  const filtered = GRUPOS.filter(
-    (g) =>
-      g.grupo.toLowerCase().includes(search.toLowerCase()) ||
-      g.gestor.toLowerCase().includes(search.toLowerCase())
-  );
+  const gestoresList = useMemo(() => {
+    const set = new Set(GRUPOS.map((g) => g.gestor).filter((g) => g !== "—"));
+    return Array.from(set).sort();
+  }, [GRUPOS]);
+
+  const hasActiveFilters = filterPeriod !== "all" || filterGestor !== "all" || search !== "";
+  const clearAllFilters = () => {
+    setFilterPeriod("all");
+    setCustomDateRange(undefined);
+    setFilterGestor("all");
+    setSearch("");
+  };
+
+  const filtered = useMemo(() => {
+    return GRUPOS.filter((g) => {
+      const matchSearch = search === "" ||
+        g.grupo.toLowerCase().includes(search.toLowerCase()) ||
+        g.gestor.toLowerCase().includes(search.toLowerCase());
+      const matchGestor = filterGestor === "all" || g.gestor === filterGestor;
+      let matchDate = true;
+      if (dateRange.from) {
+        const d = parseDateString(g.dataHora);
+        if (!d) { matchDate = false; }
+        else { matchDate = d >= dateRange.from && d <= (dateRange.to ?? new Date()); }
+      }
+      return matchSearch && matchGestor && matchDate;
+    });
+  }, [GRUPOS, search, filterGestor, dateRange]);
+
+  const totalGrupos = filtered.length;
+  const criticos    = filtered.filter((g) => g.status === "CRÍTICO").length;
+  const scoreMedia  = filtered.length > 0 ? Math.round(filtered.reduce((a, g) => a + g.score, 0) / filtered.length) : 0;
+  const resolvidos  = filtered.filter((g) => g.status === "RESOLVIDO").length;
+
+  if (!roleLoading && role === "GERENTE") {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="space-y-6">
@@ -134,6 +191,81 @@ export default function Hub() {
         <p className="text-[11px] font-bold uppercase tracking-widest text-white/60">
           Seu desempenho impacta diretamente o score da unidade.
         </p>
+      </div>
+
+      {/* ── Barra de filtros global ── */}
+      <div className="flex items-center flex-wrap gap-2 bg-muted/30 rounded-lg p-3 border">
+        <Filter size={14} className="text-muted-foreground" />
+        {(["7d", "14d", "30d"] as const).map((p) => (
+          <Button
+            key={p}
+            size="sm"
+            variant={filterPeriod === p ? "default" : "outline"}
+            className="h-8 text-xs"
+            onClick={() => setFilterPeriod(filterPeriod === p ? "all" : p)}
+          >
+            {p === "7d" ? "7 dias" : p === "14d" ? "14 dias" : "30 dias"}
+          </Button>
+        ))}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              size="sm"
+              variant={filterPeriod === "custom" ? "default" : "outline"}
+              className="h-8 text-xs gap-1"
+            >
+              <CalendarIcon size={12} />
+              {filterPeriod === "custom" && customDateRange?.from
+                ? `${format(customDateRange.from, "dd/MM")}${customDateRange.to ? ` - ${format(customDateRange.to, "dd/MM")}` : ""}`
+                : "Personalizado"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="range"
+              selected={customDateRange}
+              onSelect={(range) => {
+                setCustomDateRange(range);
+                setFilterPeriod("custom");
+              }}
+              numberOfMonths={2}
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+
+        <div className="w-px h-6 bg-border" />
+
+        <Select value={filterGestor} onValueChange={setFilterGestor}>
+          <SelectTrigger className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="Gestor de tráfego" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os gestores</SelectItem>
+            {gestoresList.map((g) => (
+              <SelectItem key={g} value={g}>{g}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="w-px h-6 bg-border" />
+
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar grupo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 pr-4 py-1.5 rounded-full border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-48"
+          />
+        </div>
+
+        {hasActiveFilters && (
+          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-muted-foreground" onClick={clearAllFilters}>
+            <X size={12} /> Limpar
+          </Button>
+        )}
       </div>
 
       {/* ── Metric cards ── */}
@@ -157,21 +289,9 @@ export default function Hub() {
 
       {/* ── Painel de Monitoramento (PESSOAL) ── */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Shield size={18} className="text-primary" />
-            <h2 className="text-base font-bold text-foreground">Painel de Monitoramento (PESSOAL)</h2>
-          </div>
-          <div className="relative w-60">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar grupo..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-full border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-          </div>
+        <div className="flex items-center gap-2 mb-4">
+          <Shield size={18} className="text-primary" />
+          <h2 className="text-base font-bold text-foreground">Painel de Monitoramento (PESSOAL)</h2>
         </div>
 
         <div className="rounded-xl border border-border bg-card overflow-hidden">
