@@ -2,50 +2,49 @@
 
 ## Diagnóstico
 
-O erro é claro nos logs:
+Consultei a documentação da Evolution API v2. Os endpoints usados no orchestrator estão corretos:
+- `GET /group/fetchAllGroups/{instance}` com header `apikey`
+- `GET /instance/fetchInstances` com header `apikey`
+- `GET /instance/connectionState/{instance}` com header `apikey`
 
-```
-invalid peer certificate: UnknownIssuer
-```
+O problema **não é de endpoint**. O problema é que a conexão HTTPS com o domínio `sslip.io` **fica pendurada** (hang) por 45 segundos até o `AbortSignal.timeout` disparar. O erro de certificado TLS nunca é lançado como exceção porque o timeout mata a requisição antes. Por isso o `safeFetch` nunca chega ao bloco `catch` com a mensagem "certificate" -- ele recebe `TimeoutError` em vez disso.
 
-A Evolution API está configurada com HTTPS (`https://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io`) mas usa um certificado SSL auto-assinado que o Deno (runtime das Edge Functions) rejeita. Isso não é um bug de código — é uma incompatibilidade de TLS.
-
-O Deno, por segurança, não aceita certificados de emissores desconhecidos. Não há API estável no Deno para desabilitar verificação TLS em `fetch()`.
+A prova: chamadas que não tocam a Evolution API (como `list-providers`, `get-instances`) retornam 200 em milissegundos. Apenas `sync-groups` (que chama `evo.getGroups` via HTTPS) dá timeout.
 
 ## Solução
 
-Modificar o orchestrator para **auto-converter HTTPS para HTTP** na base_url quando a URL usa sslip.io ou IPs diretos (indicativo de ambiente sem certificado válido). Adicionalmente, criar um wrapper de fetch que tenta HTTPS primeiro e, se falhar com erro de certificado, faz fallback para HTTP.
+Em vez de depender do fallback reativo (que nunca é acionado porque o timeout vem primeiro), converter proativamente HTTPS para HTTP na função `resolveProvider` quando a URL contém padrões indicativos de certificados inválidos (`sslip.io`, IPs diretos).
 
 ## Plano de Implementação
 
 ### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
 
-1. Criar uma função `safeFetch` que envolve `fetch` com lógica de fallback:
-   - Tenta a requisição normalmente
-   - Se falhar com erro contendo "invalid peer certificate", "UnknownIssuer", ou "certificate" → refaz a requisição trocando `https://` por `http://` na URL
-
-2. Substituir todos os `fetch(...)` dentro do objeto `evo` por `safeFetch(...)` — isso cobre todas as chamadas à Evolution API (createInstance, deleteInstance, connect, disconnect, sendMessage, sendMedia, getGroups, setWebhook, connectionState, healthCheck)
-
-### Detalhe técnico
+1. Na função `resolveProvider`, após extrair `baseUrl`, adicionar lógica para detectar URLs com `sslip.io` ou padrões de IP e converter `https://` para `http://` automaticamente:
 
 ```text
-safeFetch(url, options):
-  try:
-    return fetch(url, options)
-  catch (err):
-    if err.message includes "certificate" or "UnknownIssuer":
-      httpUrl = url.replace("https://", "http://")
-      return fetch(httpUrl, options)
-    throw err
+resolveProvider:
+  baseUrl = (row.config).base_url.replace(/\/+$/, "")
+  
+  // Novo: converter HTTPS → HTTP para domínios com certificados auto-assinados
+  if (baseUrl.startsWith("https://")) {
+    const hostname = new URL(baseUrl).hostname
+    if (hostname.includes("sslip.io") || hostname.includes("nip.io") || /\d+\.\d+\.\d+\.\d+/.test(hostname)) {
+      baseUrl = baseUrl.replace("https://", "http://")
+      console.log("[resolveProvider] Auto-converted to HTTP:", baseUrl)
+    }
+  }
 ```
 
-Isso garante que:
-- URLs com HTTPS válido continuam funcionando normalmente
-- URLs com certificados auto-assinados (como sslip.io) fazem fallback automático para HTTP
-- Nenhuma alteração de configuração necessária pelo usuário
+2. Manter o `safeFetch` existente como segunda camada de proteção para outros cenários de TLS inesperados.
+
+### Resultado esperado
+- A URL `https://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io` será automaticamente convertida para `http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io`
+- Todas as chamadas à Evolution API usarão HTTP diretamente, sem tentativa de TLS
+- Sem timeout, sem hang, sem necessidade de fallback
+- O `safeFetch` continua como rede de segurança para URLs HTTPS legítimas que falhem
 
 ### Arquivos modificados
 | Arquivo | Mudança |
 |---------|---------|
-| `supabase/functions/whatsapp-orchestrator/index.ts` | Adicionar `safeFetch` wrapper + substituir `fetch` por `safeFetch` em todas as chamadas do objeto `evo` |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Adicionar auto-conversão HTTPS→HTTP no `resolveProvider` para domínios sslip.io/nip.io/IP |
 
