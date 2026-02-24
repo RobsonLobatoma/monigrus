@@ -244,17 +244,16 @@ export default function Hub() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* ── Hero Banner ── */}
       <div
-        className="rounded-2xl px-6 py-4"
+        className="rounded-xl px-5 py-2.5 flex items-center justify-between"
         style={{ background: "linear-gradient(135deg, #3b5bdb 0%, #6741d9 100%)" }}
       >
-        <h1 className="text-xl font-extrabold text-white mb-0.5">Olá, {displayName}!</h1>
-        <p className="text-white/80 text-sm mb-1">Estes são os grupos sob sua responsabilidade direta.</p>
-        <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-          Seu desempenho impacta diretamente o score da unidade.
-        </p>
+        <div>
+          <h1 className="text-lg font-extrabold text-white leading-tight">Olá, {displayName}!</h1>
+          <p className="text-white/80 text-xs">Estes são os grupos sob sua responsabilidade direta.</p>
+        </div>
       </div>
 
       {/* ── Barra de filtros global ── */}
@@ -319,19 +318,18 @@ export default function Hub() {
       </div>
 
       {/* ── Metric cards ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: "MEUS GRUPOS",  value: totalGrupos,     sub: "grupos monitorados",    icon: <Users size={14} className="text-primary" />,        accent: "bg-primary/10" },
-          { label: "CRÍTICOS",     value: criticos,         sub: "requerem atenção",      icon: <AlertTriangle size={14} className="text-red-500" />, accent: "bg-red-500/10" },
-          { label: "SCORE MÉDIO",  value: `${scoreMedia}`,  sub: "pontuação da carteira", icon: <TrendingUp size={14} className="text-green-500" />, accent: "bg-green-500/10" },
-          { label: "RESOLVIDOS",   value: resolvidos,       sub: "neste ciclo",           icon: <Shield size={14} className="text-blue-500" />,      accent: "bg-blue-500/10" },
+          { label: "MEUS GRUPOS",  value: totalGrupos,     icon: <Users size={14} className="text-primary" />,        accent: "bg-primary/10" },
+          { label: "CRÍTICOS",     value: criticos,         icon: <AlertTriangle size={14} className="text-destructive" />, accent: "bg-destructive/10" },
+          { label: "SCORE MÉDIO",  value: `${scoreMedia}`,  icon: <TrendingUp size={14} className="text-green-500" />, accent: "bg-green-500/10" },
+          { label: "RESOLVIDOS",   value: resolvidos,       icon: <Shield size={14} className="text-blue-500" />,      accent: "bg-blue-500/10" },
         ].map((card) => (
-          <div key={card.label} className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">
-            <div className={`w-7 h-7 rounded-lg ${card.accent} flex items-center justify-center`}>{card.icon}</div>
+          <div key={card.label} className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-2">
+            <div className={`w-7 h-7 rounded-lg ${card.accent} flex items-center justify-center shrink-0`}>{card.icon}</div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{card.label}</p>
-              <p className="text-xl font-bold text-foreground mt-0.5">{card.value}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none">{card.label}</p>
+              <p className="text-lg font-bold text-foreground">{card.value}</p>
             </div>
           </div>
         ))}
