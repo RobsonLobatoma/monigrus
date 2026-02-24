@@ -2,115 +2,82 @@
 
 ## Diagnostico
 
-Analisei os logs, o banco de dados e a documentacao da Evolution API v2. Encontrei **3 problemas criticos**:
+Analisei os logs, o codigo e o fluxo completo. Identifiquei **3 problemas** que causam o erro ao remover e adicionar instancia:
 
-### Problema 1: Webhook nunca foi registrado com sucesso
-Os logs mostram: `[sync-groups] Webhook config for pessoa: null`
+### Problema 1: Polling continua apos deletar instancia
+Quando o usuario deleta uma instancia enquanto o polling de `check-status` esta ativo (interval de 5s), o polling continua chamando `checkStatus.mutate(oldInstanceId)`. O ID antigo nao existe mais no banco, causando erro "Instance not found" que nao eh tratado e pode crashar a app.
 
-O codigo atual em `evo.setWebhook` envia:
-```json
-{
-  "url": "...",
-  "webhook_by_events": false,
-  "webhook_base64": false,
-  "events": [...]
-}
-```
+### Problema 2: Auto-sync dispara sem `onError` handler
+No `useEffect` das linhas 90-107, quando uma instancia "connecting" eh detectada, `syncGroups.mutate()` eh chamado sem `onError`. Se o sync falhar (timeout de 45s no `fetchAllGroups`), o erro propaga sem tratamento e causa o dialog "The app encountered an error".
 
-A documentacao da Evolution API v2 exige o campo **`enabled: true`** como obrigatorio. Sem ele, o webhook nao eh ativado. Alem disso, os nomes dos campos devem ser `webhookByEvents` e `webhookBase64` (camelCase), nao snake_case.
+### Problema 3: `autoCheckedRef` nunca reseta
+A ref `autoCheckedRef` eh setada para `true` na primeira vez e nunca volta a `false`. Quando o usuario deleta a instancia e cria uma nova (que fica em "connecting"), o auto-check nao roda para a nova instancia porque `autoCheckedRef.current` ja eh `true`.
 
-### Problema 2: `findMessages` com filtro `remoteJid` nao funciona
-O GitHub issue #1632 da Evolution API confirma que o endpoint `POST /chat/findMessages/{instance}` **nao filtra por remoteJid** — retorna array vazio ou ignora o filtro. Isso explica `Messages found: 0/93`.
-
-### Problema 3: Tabelas `grupo_messages` e `whatsapp_webhooks_log` estao vazias
-Zero registros em ambas. Consequencia direta do webhook nao estar registrado — nenhum evento jamais chegou ao backend.
+### Sobre o timeout de 45s no `fetchAllGroups`
+Os logs confirmam que a URL esta correta (`http://...sslip.io/group/fetchAllGroups/robson`), o protocolo ja eh HTTP. O endpoint simplesmente demora demais ou trava no servidor Evolution API para instancias recem-conectadas. Isso nao pode ser corrigido no nosso lado, mas podemos tornar o fluxo resiliente.
 
 ---
 
 ## Plano de Implementacao
 
-### ETAPA 1 — Corrigir registro do webhook na Evolution API
+### Arquivo: `src/pages/Conexoes.tsx`
 
-**Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`**
-
-Modificar `evo.setWebhook` (linhas 85-103) para enviar o payload correto conforme a documentacao v2:
+**Mudanca 1** — Parar polling ao deletar instancia:
 
 ```text
-Body correto:
-{
-  "enabled": true,          // OBRIGATORIO - campo faltando
-  "url": webhookUrl,
-  "webhookByEvents": false,  // camelCase, nao snake_case
-  "webhookBase64": false,    // camelCase, nao snake_case
-  "events": [
-    "MESSAGES_UPSERT",       // Formato enum correto da v2
-    "MESSAGES_UPDATE",
-    "CONNECTION_UPDATE",
-    "QRCODE_UPDATED"
-  ]
-}
+handleDeleteInstance (novo):
+  1. Chamar stopPolling() ANTES de deletar
+  2. Resetar autoCheckedRef para false
+  3. Deletar instancia
+  4. Toast de sucesso
 ```
 
-### ETAPA 2 — Corrigir busca de mensagens durante sync
+Atualmente a linha 283 chama `deleteInstance.mutate` inline sem parar o polling.
 
-**Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`**
-
-Substituir `evo.findLastMessage` (que usa `findMessages` com filtro remoteJid quebrado) por `evo.findChats`:
+**Mudanca 2** — Adicionar `onError` no auto-sync do useEffect:
 
 ```text
-evo.findChats(instanceName, config):
-  POST /chat/findChats/{instanceName}
-  body: {}
-  Retorna array de chats, cada um com lastMessage e remoteJid
-  
-sync-groups modificado:
-  1. Chamar evo.findChats UMA VEZ (em vez de 93 chamadas individuais)
-  2. Criar mapa: remoteJid → lastMessage
-  3. Para cada grupo sincronizado, buscar a mensagem no mapa
-  4. Atualizar last_message e last_message_at
+useEffect (linhas 90-107):
+  syncGroups.mutate(inst.id, {
+    onSuccess: ...,
+    onError: (err) => {
+      console.error("Auto-sync failed:", err.message);
+      // Silencioso - nao mostra toast para auto-sync
+    }
+  });
 ```
 
-Isso resolve performance (1 chamada vs 93) e o bug do filtro.
-
-### ETAPA 3 — Corrigir o webhook handler para o formato real da Evolution API v2
-
-**Arquivo: `supabase/functions/whatsapp-webhook/index.ts`**
-
-O webhook atual extrai `body.event` mas a Evolution API v2 envia o evento no campo `body.event` com formato diferente. Ajustar:
+**Mudanca 3** — Resetar `autoCheckedRef` quando instancias mudam:
 
 ```text
-Payload real da Evolution v2:
-{
-  "event": "messages.upsert",
-  "instance": "pessoa",
-  "data": {
-    "key": { "remoteJid": "...", "fromMe": false, "id": "..." },
-    "pushName": "Nome",
-    "message": { "conversation": "texto" },
-    "messageType": "conversation",
-    "messageTimestamp": 1234567890
-  }
-}
-
-Ajustes:
-1. Extrair instanceName de body.instance (string direta, nao body.instance.instanceName)
-2. Tratar body.data como objeto unico (nao array)
-3. Usar messageTimestamp para received_at
+// Quando a lista de instancias muda (criacao/delecao), permitir nova auto-check
+// Trocar autoCheckedRef por um estado que rastreie os IDs ja verificados
+// OU simplesmente resetar autoCheckedRef quando instances.length muda
 ```
 
-### ETAPA 4 — Registrar webhook automaticamente ao conectar instancia
+Usar um `Set` de IDs ja verificados em vez de boolean simples:
+```text
+const autoCheckedIdsRef = useRef<Set<string>>(new Set());
 
-Ja existe a chamada `evo.setWebhook` no `create-instance` e `connect-instance`. Com o fix do payload (ETAPA 1), o webhook passara a ser registrado corretamente.
+useEffect:
+  for each connecting instance:
+    if (!autoCheckedIdsRef.current.has(inst.id)):
+      autoCheckedIdsRef.current.add(inst.id);
+      checkStatus.mutate(inst.id, { ... });
+```
 
-Adicionar tambem ao `sync-groups`: se o webhook nao estiver configurado, registra-lo automaticamente.
+**Mudanca 4** — Extrair delete handler para funcao dedicada:
 
-### ETAPA 5 — Garantir que a Monitoramento exiba mensagens em tempo real
-
-**Arquivo: `src/pages/Monitoramento.tsx`**
-
-O codigo na linha 177 ja usa `(g as any).last_message || "Sem mensagens"` — isso funcionara automaticamente quando o webhook comecar a popular `last_message` na tabela `grupos`.
-
-Nenhuma mudanca necessaria no frontend.
+```text
+const handleDeleteInstance = (instanceId: string) => {
+  stopPolling();
+  autoCheckedIdsRef.current.clear();
+  deleteInstance.mutate(instanceId, {
+    onSuccess: () => toast({ title: "Instância removida" }),
+    onError: (e) => toast({ title: "Erro ao remover", description: e.message, variant: "destructive" }),
+  });
+};
+```
 
 ---
 
@@ -118,14 +85,12 @@ Nenhuma mudanca necessaria no frontend.
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `supabase/functions/whatsapp-orchestrator/index.ts` | Fix `evo.setWebhook` com `enabled: true` e campos camelCase; substituir `evo.findLastMessage` por `evo.findChats` (1 chamada vs 93); auto-registrar webhook no sync-groups |
-| `supabase/functions/whatsapp-webhook/index.ts` | Corrigir extracao de `instanceName` do payload v2; tratar `data` como objeto unico |
+| `src/pages/Conexoes.tsx` | Parar polling ao deletar; adicionar onError no auto-sync; usar Set de IDs em vez de boolean para autoCheck; extrair handleDeleteInstance |
 
 ## Resultado esperado
 
-1. Webhook sera registrado com sucesso na Evolution API
-2. Mensagens chegam em tempo real via webhook → `grupo_messages` + `grupos.last_message`
-3. `findChats` popula `last_message` durante sync para mensagens pre-existentes
-4. Coluna "CONVERSAS" exibe mensagens reais
-5. Metricas de mensagens passam a funcionar
+1. Deletar instancia para o polling imediatamente — sem chamadas fantasma a IDs inexistentes
+2. Criar nova instancia apos deletar permite auto-check correto da nova instancia
+3. Erros de sync (timeout 45s) nao crasham a app — tratados silenciosamente no auto-sync, com toast no sync manual
+4. O dialog "The app encountered an error" nao aparece mais
 
