@@ -5,7 +5,19 @@ const invoke = async (action: string, params: Record<string, any> = {}) => {
   const { data, error } = await supabase.functions.invoke("whatsapp-orchestrator", {
     body: { action, ...params },
   });
-  if (error) throw error;
+  if (error) {
+    // FunctionsHttpError stores the Response in error.context
+    try {
+      const ctx = (error as any).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        if (body?.error) throw new Error(body.error);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message !== "Edge Function returned a non-2xx status code") throw e;
+    }
+    throw new Error(error.message || "Erro na comunicação com o servidor");
+  }
   if (data?.error) throw new Error(data.error);
   return data?.data;
 };
