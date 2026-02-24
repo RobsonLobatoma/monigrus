@@ -27,6 +27,7 @@ import {
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useOperationalMetrics } from "@/hooks/useOperationalMetrics";
 import { useGrupos } from "@/hooks/useGrupos";
+import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { CapacityAlert } from "@/components/CapacityAlert";
 import { Navigate } from "react-router-dom";
@@ -88,6 +89,7 @@ const Squads = () => {
   }, [effectiveTeamId]);
 
   const { data: dbGrupos } = useGrupos();
+  useGroupConversations();
   const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
   const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
   const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
@@ -175,13 +177,15 @@ const Squads = () => {
         const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
         return {
           id: g.id,
-          dataHora: g.ultima_atividade ?? "—",
+          dataHora: (g as any).last_message_at
+            ? format(new Date((g as any).last_message_at), "dd/MM/yyyy\nHH:mm")
+            : g.ultima_atividade ?? "—",
           grupo: g.nome,
           gestorTrafego: g.gestor ?? "—",
           satisfacao: scoreToSatisfacao(score),
           score,
           status: g.status ?? "PENDENTE",
-          descricao: `Grupo: ${g.nome}`,
+          descricao: (g as any).last_message || "Sem mensagens",
         };
       });
   }, [dbGrupos, effectiveTeamId, scoreToSatisfacao]);

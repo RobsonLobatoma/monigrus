@@ -3,6 +3,7 @@ import { Shield, Search, CalendarIcon, X, Filter } from "lucide-react";
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { useGrupos } from "@/hooks/useGrupos";
+import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { Navigate } from "react-router-dom";
@@ -92,6 +93,7 @@ function parseDateString(dateStr: string): Date | null {
 
 export default function Monitoramento() {
   const { data: dbGrupos } = useGrupos();
+  useGroupConversations();
   const { role, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
@@ -156,14 +158,16 @@ export default function Monitoramento() {
         const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
         return {
           id: g.id,
-          dataHora: g.ultima_atividade ?? "—",
+          dataHora: (g as any).last_message_at
+            ? format(new Date((g as any).last_message_at), "dd/MM/yyyy\nHH:mm")
+            : g.ultima_atividade ?? "—",
           grupo: g.nome,
           gestorTrafego: g.gestor ?? "—",
           squad: "—",
           satisfacao: scoreToSatisfacao(score),
           score,
           status: g.status ?? "PENDENTE",
-          descricao: `Grupo: ${g.nome}`,
+          descricao: (g as any).last_message || "Sem mensagens",
         };
       });
     }

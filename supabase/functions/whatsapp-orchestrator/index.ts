@@ -372,6 +372,61 @@ Deno.serve(async (req) => {
         break;
       }
 
+      case "sync-groups": {
+        const { instanceId } = params;
+        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
+        if (!inst) throw new Error("Instance not found");
+        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
+        const { groups: waGroups } = await adapter.getGroups(inst.instance_name, config);
+
+        let synced = 0;
+        for (const wg of waGroups) {
+          const jid = wg.id || wg.jid;
+          const name = wg.subject || wg.name || jid;
+          if (!jid) continue;
+
+          // Try to find existing grupo by whatsapp_group_id
+          const { data: existing } = await serviceClient
+            .from("grupos")
+            .select("id")
+            .eq("whatsapp_group_id", jid)
+            .maybeSingle();
+
+          if (existing) {
+            await serviceClient.from("grupos").update({
+              nome: name,
+              ultima_atividade: new Date().toISOString(),
+            }).eq("id", existing.id);
+          } else {
+            // Try to match by name
+            const { data: byName } = await serviceClient
+              .from("grupos")
+              .select("id")
+              .eq("nome", name)
+              .is("whatsapp_group_id", null)
+              .maybeSingle();
+
+            if (byName) {
+              await serviceClient.from("grupos").update({
+                whatsapp_group_id: jid,
+                ultima_atividade: new Date().toISOString(),
+              }).eq("id", byName.id);
+            } else {
+              await serviceClient.from("grupos").insert({
+                nome: name,
+                whatsapp_group_id: jid,
+                status: "PENDENTE",
+                sla: "DENTRO DO SLA",
+                ultima_atividade: new Date().toISOString(),
+              });
+            }
+          }
+          synced++;
+        }
+        result = { synced, total: waGroups.length };
+        break;
+      }
+
       // ── Health check ──
       case "health-check": {
         const { providerId } = params;
