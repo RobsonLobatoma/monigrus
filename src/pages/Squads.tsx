@@ -251,7 +251,7 @@ const Squads = () => {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -300,15 +300,15 @@ const Squads = () => {
           )}
 
           {/* Squad header */}
-          <div className="rounded-xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="rounded-xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 px-5 py-2.5">
+            <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-foreground">{currentSquad.name}</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-lg font-bold text-foreground leading-tight">{currentSquad.name}</h2>
+                <p className="text-xs text-muted-foreground">
                   Supervisor: {currentSquad.supervisor || "Não definido"}
                 </p>
               </div>
-              <div className="w-64">
+              <div className="w-56">
                 <CapacityAlert
                   current={currentSquad.totalGrupos}
                   max={currentSquad.capacidadeMaxima}
@@ -405,63 +405,21 @@ const Squads = () => {
           </div>
 
           {/* KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Score Médio</p>
-                    <p className="text-3xl font-bold text-foreground mt-1">{filteredKPIs.scoreMedio}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <TrendingUp className="text-primary" size={20} />
-                  </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: "SCORE MÉDIO", value: filteredKPIs.scoreMedio, icon: <TrendingUp size={14} className="text-primary" />, accent: "bg-primary/10" },
+              { label: "CRÍTICOS", value: filteredKPIs.gruposCriticos, icon: <AlertTriangle size={14} className="text-destructive" />, accent: "bg-destructive/10" },
+              { label: "TEMPO RESPOSTA", value: "—", icon: <Clock size={14} className="text-primary" />, accent: "bg-primary/10" },
+              { label: "ALERTAS ATIVOS", value: currentSquad.alertasAtivos, icon: <AlertTriangle size={14} className="text-yellow-500" />, accent: "bg-yellow-500/10" },
+            ].map((card) => (
+              <div key={card.label} className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-2">
+                <div className={`w-7 h-7 rounded-lg ${card.accent} flex items-center justify-center shrink-0`}>{card.icon}</div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground leading-none">{card.label}</p>
+                  <p className="text-lg font-bold text-foreground">{card.value}</p>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Grupos Críticos</p>
-                    <p className="text-3xl font-bold text-destructive mt-1">{filteredKPIs.gruposCriticos}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-                    <AlertTriangle className="text-destructive" size={20} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tempo Resposta</p>
-                    <p className="text-3xl font-bold text-foreground mt-1">—</p>
-                    <p className="text-[10px] text-muted-foreground">Em breve</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Clock className="text-primary" size={20} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Alertas Ativos</p>
-                    <p className="text-3xl font-bold text-foreground mt-1">{currentSquad.alertasAtivos}</p>
-                  </div>
-                  <div className="w-10 h-10 rounded-lg bg-[hsl(var(--status-regular))]/10 flex items-center justify-center">
-                    <AlertTriangle className="text-[hsl(var(--status-regular))]" size={20} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+            ))}
           </div>
 
           {/* Gestores do Squad */}
