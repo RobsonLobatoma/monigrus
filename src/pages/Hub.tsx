@@ -8,7 +8,7 @@ import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { cn } from "@/lib/utils";
 
 type Satisfacao = "Ótimo" | "Regular" | "Ruim";
@@ -109,7 +109,7 @@ export default function Hub() {
   const [search, setSearch] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
-  const [filterGestor, setFilterGestor] = useState("all");
+  
 
   const displayName = userName ?? "Colaborador";
 
@@ -141,16 +141,10 @@ export default function Hub() {
     }
   }, [filterPeriod, customDateRange]);
 
-  const gestoresList = useMemo(() => {
-    const set = new Set(GRUPOS.map((g) => g.gestor).filter((g) => g !== "—"));
-    return Array.from(set).sort();
-  }, [GRUPOS]);
-
-  const hasActiveFilters = filterPeriod !== "all" || filterGestor !== "all" || search !== "";
+  const hasActiveFilters = filterPeriod !== "all" || search !== "";
   const clearAllFilters = () => {
     setFilterPeriod("all");
     setCustomDateRange(undefined);
-    setFilterGestor("all");
     setSearch("");
   };
 
@@ -159,16 +153,15 @@ export default function Hub() {
       const matchSearch = search === "" ||
         g.grupo.toLowerCase().includes(search.toLowerCase()) ||
         g.gestor.toLowerCase().includes(search.toLowerCase());
-      const matchGestor = filterGestor === "all" || g.gestor === filterGestor;
       let matchDate = true;
       if (dateRange.from) {
         const d = parseDateString(g.dataHora);
         if (!d) { matchDate = false; }
         else { matchDate = d >= dateRange.from && d <= (dateRange.to ?? new Date()); }
       }
-      return matchSearch && matchGestor && matchDate;
+      return matchSearch && matchDate;
     });
-  }, [GRUPOS, search, filterGestor, dateRange]);
+  }, [GRUPOS, search, dateRange]);
 
   const totalGrupos = filtered.length;
   const criticos    = filtered.filter((g) => g.status === "CRÍTICO").length;
@@ -233,20 +226,6 @@ export default function Hub() {
             />
           </PopoverContent>
         </Popover>
-
-        <div className="w-px h-6 bg-border" />
-
-        <Select value={filterGestor} onValueChange={setFilterGestor}>
-          <SelectTrigger className="h-8 w-[180px] text-xs">
-            <SelectValue placeholder="Gestor de tráfego" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os gestores</SelectItem>
-            {gestoresList.map((g) => (
-              <SelectItem key={g} value={g}>{g}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
         <div className="w-px h-6 bg-border" />
 
