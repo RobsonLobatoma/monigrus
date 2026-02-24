@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
-import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups } from "@/hooks/useWhatsAppInstances";
+import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -23,8 +23,10 @@ const statusColors: Record<string, string> = {
 export default function Conexoes() {
   const { toast } = useToast();
   const [newInstanceName, setNewInstanceName] = useState("");
-  const [qrModal, setQrModal] = useState<{ open: boolean; qrCode?: string; instanceName?: string }>({ open: false });
+  const [qrModal, setQrModal] = useState<{ open: boolean; qrCode?: string; instanceName?: string; instanceId?: string }>({ open: false });
   const [groupsModal, setGroupsModal] = useState<{ open: boolean; groups: any[]; instanceName?: string }>({ open: false, groups: [] });
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingCountRef = useRef(0);
 
   const { data: providers, isLoading: loadingProviders } = useWhatsAppProviders();
   const { data: instances, isLoading: loadingInstances } = useWhatsAppInstances();
@@ -41,6 +43,47 @@ export default function Conexoes() {
   const getQrCode = useGetQrCode();
   const getGroups = useGetGroups();
   const syncGroups = useSyncGroups();
+  const checkStatus = useCheckStatus();
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    pollingCountRef.current = 0;
+  }, []);
+
+  const startPolling = useCallback((instanceId: string) => {
+    stopPolling();
+    pollingCountRef.current = 0;
+    pollingRef.current = setInterval(() => {
+      pollingCountRef.current++;
+      if (pollingCountRef.current > 12) { // max 60s (12 * 5s)
+        stopPolling();
+        return;
+      }
+      checkStatus.mutate(instanceId, {
+        onSuccess: (data: any) => {
+          if (data?.status === "connected") {
+            stopPolling();
+            setQrModal(s => ({ ...s, open: false }));
+            toast({ title: "Conectado!", description: "Instância conectada com sucesso. Sincronizando grupos..." });
+            syncGroups.mutate(instanceId, {
+              onSuccess: (syncData: any) => {
+                toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
+              },
+              onError: (err: any) => {
+                toast({ title: "Erro ao sincronizar grupos", description: err.message, variant: "destructive" });
+              },
+            });
+          }
+        },
+      });
+    }, 5000);
+  }, [stopPolling, checkStatus, syncGroups, toast]);
+
+  // Clean up polling on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const handleSyncGroups = (instanceId: string) => {
     syncGroups.mutate(instanceId, {
@@ -71,9 +114,11 @@ export default function Conexoes() {
     connectInstance.mutate(instanceId, {
       onSuccess: (data: any) => {
         if (data?.qrCode) {
-          setQrModal({ open: true, qrCode: data.qrCode, instanceName });
+          setQrModal({ open: true, qrCode: data.qrCode, instanceName, instanceId });
+          startPolling(instanceId);
         } else {
           toast({ title: "Conexão iniciada", description: "Aguardando QR Code..." });
+          startPolling(instanceId);
         }
       },
       onError: (e: any) => toast({ title: "Erro ao conectar", description: e.message, variant: "destructive" }),
@@ -191,6 +236,12 @@ export default function Conexoes() {
                             </Button>
                             <Button size="icon" variant="ghost" title="Grupos" onClick={() => handleGetGroups(inst.id, inst.instance_name)} disabled={getGroups.isPending}>
                               <Users className="w-4 h-4" />
+                            </Button>
+                            <Button size="icon" variant="ghost" title="Verificar Status" onClick={() => checkStatus.mutate(inst.id, {
+                              onSuccess: (data: any) => toast({ title: `Status: ${data?.status}`, description: `Estado na API: ${data?.state}` }),
+                              onError: (e: any) => toast({ title: "Erro ao verificar", description: e.message, variant: "destructive" }),
+                            })} disabled={checkStatus.isPending}>
+                              <Search className="w-4 h-4" />
                             </Button>
                             <Button size="icon" variant="ghost" title="Sincronizar Grupos" onClick={() => handleSyncGroups(inst.id)} disabled={syncGroups.isPending}>
                               <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
@@ -387,7 +438,7 @@ export default function Conexoes() {
       </Tabs>
 
       {/* ── QR Code Modal ── */}
-      <Dialog open={qrModal.open} onOpenChange={(o) => setQrModal((s) => ({ ...s, open: o }))}>
+      <Dialog open={qrModal.open} onOpenChange={(o) => { if (!o) stopPolling(); setQrModal((s) => ({ ...s, open: o })); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>QR Code — {qrModal.instanceName}</DialogTitle>

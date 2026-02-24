@@ -45,6 +45,29 @@ const evo = {
     console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
     return { groups: Array.isArray(d) ? d : [] };
   },
+  setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
+    console.log(`[evo.setWebhook] Setting webhook for ${n} → ${webhookUrl}`);
+    try {
+      await safeJson(await fetch(`${c.base_url}/webhook/set/${n}`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({
+          url: webhookUrl,
+          webhook_by_events: false,
+          webhook_base64: false,
+          events: ["connection.update", "qrcode.updated", "messages.upsert", "messages.update", "status.instance"]
+        }),
+        signal: sig()
+      }));
+      console.log(`[evo.setWebhook] Webhook set successfully for ${n}`);
+    } catch (e) {
+      console.error(`[evo.setWebhook] Failed to set webhook for ${n}:`, e);
+    }
+  },
+  connectionState: async (n: string, c: ProviderConfig) => {
+    const d = await safeJson(await fetch(`${c.base_url}/instance/connectionState/${n}`, { headers: authOnly(c), signal: sig() }));
+    return d?.instance?.state || d?.state || "unknown";
+  },
   healthCheck: async (c: ProviderConfig) => {
     const s = Date.now();
     try { const r = await fetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
@@ -95,6 +118,7 @@ Deno.serve(async (req) => {
       case "create-instance": {
         const { instanceName, providerId } = params;
         const { config, row } = await resolveProvider(providerId);
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
         const apiRes = await evo.createInstance(instanceName, config);
         const msg = apiRes?.message;
         const inUse = Array.isArray(msg) ? msg.some((m: string) => typeof m === "string" && m.includes("already in use")) : typeof msg === "string" && msg.includes("already in use");
@@ -102,6 +126,7 @@ Deno.serve(async (req) => {
           const isErr = apiRes?.error || (typeof msg === "string" && !msg.includes("already in use"));
           if (isErr) throw new Error(`API error: ${JSON.stringify(apiRes)}`);
         }
+        await evo.setWebhook(instanceName, config, webhookUrl);
         const { data } = await svc.from("whatsapp_instances").insert({ instance_name: instanceName, provider_id: row.id, status: "disconnected" }).select().single();
         result = { instance: data, apiResult: apiRes };
         break;
@@ -117,6 +142,8 @@ Deno.serve(async (req) => {
       case "connect-instance": {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
+        const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
+        await evo.setWebhook(inst.instance_name, config, webhookUrl);
         const r = await evo.connect(inst.instance_name, config);
         await svc.from("whatsapp_instances").update({ status: "connecting", qr_code: r.qrCode || null }).eq("id", params.instanceId);
         result = r;
@@ -209,6 +236,19 @@ Deno.serve(async (req) => {
         }
         console.log(`[sync-groups] Done. Synced: ${synced}/${waGroups.length}`);
         result = { synced, total: waGroups.length };
+        break;
+      }
+      case "check-status": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const state = await evo.connectionState(inst.instance_name, config);
+        console.log(`[check-status] Instance ${inst.instance_name}: state=${state}`);
+        const statusMap: Record<string, string> = { open: "connected", close: "disconnected", connecting: "connecting" };
+        const newStatus = statusMap[state] || "disconnected";
+        const upd: any = { status: newStatus };
+        if (newStatus === "connected") upd.qr_code = null;
+        await svc.from("whatsapp_instances").update(upd).eq("id", params.instanceId);
+        result = { state, status: newStatus };
         break;
       }
       case "health-check": {
