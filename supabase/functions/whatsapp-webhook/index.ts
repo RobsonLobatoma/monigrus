@@ -20,10 +20,15 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const eventType = body.event || body.action || "unknown";
 
-    // Try to find instance by instance name from payload
+    // Evolution API v2 sends instance as a direct string
+    const instanceName =
+      typeof body.instance === "string"
+        ? body.instance
+        : body.instance?.instanceName || body.instanceName || null;
+
+    // Find instance by name
     let instanceId: string | null = null;
-    const instanceName = body.instance?.instanceName || body.instance || body.instanceName;
-    if (instanceName && typeof instanceName === "string") {
+    if (instanceName) {
       const { data: inst } = await supabase
         .from("whatsapp_instances")
         .select("id")
@@ -31,6 +36,8 @@ Deno.serve(async (req) => {
         .maybeSingle();
       instanceId = inst?.id || null;
     }
+
+    console.log(`[webhook] event=${eventType}, instance=${instanceName}, instanceId=${instanceId}`);
 
     // Log webhook event
     await supabase.from("whatsapp_webhooks_log").insert({
@@ -44,14 +51,16 @@ Deno.serve(async (req) => {
     if (instanceId) {
       const statusMap: Record<string, string> = {
         "connection.update": body.data?.state === "open" ? "connected" : body.data?.state === "close" ? "disconnected" : "connecting",
+        "CONNECTION_UPDATE": body.data?.state === "open" ? "connected" : body.data?.state === "close" ? "disconnected" : "connecting",
         "qrcode.updated": "connecting",
+        "QRCODE_UPDATED": "connecting",
         "status.instance": body.data?.status || "disconnected",
       };
 
       const newStatus = statusMap[eventType];
       if (newStatus) {
         const updateData: any = { status: newStatus };
-        if (eventType === "qrcode.updated" && body.data?.qrcode?.base64) {
+        if ((eventType === "qrcode.updated" || eventType === "QRCODE_UPDATED") && body.data?.qrcode?.base64) {
           updateData.qr_code = body.data.qrcode.base64;
         }
         if (newStatus === "connected") {
@@ -61,31 +70,45 @@ Deno.serve(async (req) => {
         await supabase.from("whatsapp_instances").update(updateData).eq("id", instanceId);
       }
 
-      // Process inbound messages and save to grupo_messages
-      if (eventType === "messages.upsert" && body.data) {
+      // Process inbound messages
+      if (
+        (eventType === "messages.upsert" || eventType === "MESSAGES_UPSERT") &&
+        body.data
+      ) {
+        // Evolution API v2 sends data as single object, but handle array too
         const messages = Array.isArray(body.data) ? body.data : [body.data];
+
         for (const msg of messages) {
           if (msg.key && !msg.key.fromMe) {
+            const remoteJid = msg.key?.remoteJid || "";
+            const isGroup = remoteJid.endsWith("@g.us");
+            const senderName = msg.pushName || msg.key?.participant || "Desconhecido";
+            const messageText =
+              msg.message?.conversation ||
+              msg.message?.extendedTextMessage?.text ||
+              msg.message?.imageMessage?.caption ||
+              msg.message?.videoMessage?.caption ||
+              msg.message?.documentMessage?.caption ||
+              `[${msg.messageType || "mídia"}]`;
+            const messageType = msg.messageType || "text";
+
+            // Use messageTimestamp from Evolution API v2
+            const receivedAt = msg.messageTimestamp
+              ? new Date(
+                  (typeof msg.messageTimestamp === "number"
+                    ? msg.messageTimestamp
+                    : parseInt(msg.messageTimestamp)) * 1000
+                ).toISOString()
+              : new Date().toISOString();
+
             // Log to whatsapp_message_log
             await supabase.from("whatsapp_message_log").insert({
               instance_id: instanceId,
               direction: "inbound",
-              message_type: msg.messageType || "text",
+              message_type: messageType,
               payload: msg,
               status: "delivered",
             });
-
-            // Extract message info
-            const remoteJid = msg.key?.remoteJid || "";
-            const isGroup = remoteJid.endsWith("@g.us");
-            const senderName = msg.pushName || msg.key?.participant || "Desconhecido";
-            const messageText = msg.message?.conversation
-              || msg.message?.extendedTextMessage?.text
-              || msg.message?.imageMessage?.caption
-              || msg.message?.videoMessage?.caption
-              || msg.message?.documentMessage?.caption
-              || `[${msg.messageType || "mídia"}]`;
-            const messageType = msg.messageType || "text";
 
             if (isGroup) {
               // Insert into grupo_messages
@@ -95,13 +118,13 @@ Deno.serve(async (req) => {
                 sender_name: senderName,
                 message_text: messageText,
                 message_type: messageType,
-                received_at: new Date().toISOString(),
+                received_at: receivedAt,
               });
 
               // Update grupos table if mapped
               const { data: grupo } = await supabase
                 .from("grupos")
-                .select("id")
+                .select("id, mensagens")
                 .eq("whatsapp_group_id", remoteJid)
                 .maybeSingle();
 
@@ -113,20 +136,14 @@ Deno.serve(async (req) => {
                   .eq("whatsapp_group_id", remoteJid)
                   .is("grupo_id", null);
 
-                // Update last_message and increment message count atomically
-                const now = new Date().toISOString();
-                const { data: current } = await supabase
-                  .from("grupos")
-                  .select("mensagens")
-                  .eq("id", grupo.id)
-                  .single();
+                // Update last_message and increment message count
                 await supabase
                   .from("grupos")
                   .update({
                     last_message: `${senderName}: ${messageText}`.substring(0, 500),
-                    last_message_at: now,
-                    ultima_atividade: now,
-                    mensagens: (current?.mensagens || 0) + 1,
+                    last_message_at: receivedAt,
+                    ultima_atividade: receivedAt,
+                    mensagens: (grupo.mensagens || 0) + 1,
                   })
                   .eq("id", grupo.id);
               }
