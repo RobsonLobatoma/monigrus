@@ -577,6 +577,7 @@ export type Database = {
           gestor: string | null
           gestor_id: string | null
           id: string
+          instance_id: string | null
           last_message: string | null
           last_message_at: string | null
           mensagens: number
@@ -595,6 +596,7 @@ export type Database = {
           gestor?: string | null
           gestor_id?: string | null
           id?: string
+          instance_id?: string | null
           last_message?: string | null
           last_message_at?: string | null
           mensagens?: number
@@ -613,6 +615,7 @@ export type Database = {
           gestor?: string | null
           gestor_id?: string | null
           id?: string
+          instance_id?: string | null
           last_message?: string | null
           last_message_at?: string | null
           mensagens?: number
@@ -626,6 +629,13 @@ export type Database = {
           whatsapp_group_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "grupos_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_instances"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "grupos_sector_id_fkey"
             columns: ["sector_id"]

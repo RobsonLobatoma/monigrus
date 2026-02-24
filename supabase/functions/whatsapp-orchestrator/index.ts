@@ -135,6 +135,8 @@ Deno.serve(async (req) => {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
         try { await evo.deleteInstance(inst.instance_name, config); } catch {}
+        // Deactivate all groups linked to this instance before deleting
+        await svc.from("grupos").update({ ativo: false }).eq("instance_id", params.instanceId);
         await svc.from("whatsapp_instances").delete().eq("id", params.instanceId);
         result = { success: true };
         break;
@@ -226,22 +228,34 @@ Deno.serve(async (req) => {
           const jid = wg.id || wg.jid;
           const name = wg.subject || wg.name || jid;
           if (!jid) continue;
+
+          // Extract last message from Evolution API payload if available
+          const rawLastMsg = wg.lastMessage || wg.last_message;
+          const lastMessageText = rawLastMsg?.message?.conversation || rawLastMsg?.message?.extendedTextMessage?.text || rawLastMsg?.body || (typeof rawLastMsg === "string" ? rawLastMsg : null);
+          const lastMessageAt = rawLastMsg?.messageTimestamp
+            ? new Date((typeof rawLastMsg.messageTimestamp === "number" ? rawLastMsg.messageTimestamp : parseInt(rawLastMsg.messageTimestamp)) * 1000).toISOString()
+            : (lastMessageText ? new Date().toISOString() : null);
+
           const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
           if (existing) {
-            const upd: any = { nome: name, ultima_atividade: new Date().toISOString() };
-            // Enrich existing groups that have no gestor
+            const upd: any = { nome: name, ultima_atividade: new Date().toISOString(), instance_id: inst.id, ativo: true };
             if (!existing.gestor && gestorName) {
               upd.gestor = gestorName;
               upd.gestor_id = user.id;
             }
             if (gestorTeamId) upd.team_id = gestorTeamId;
+            if (lastMessageText) upd.last_message = lastMessageText;
+            if (lastMessageAt) upd.last_message_at = lastMessageAt;
             await svc.from("grupos").update(upd).eq("id", existing.id);
           } else {
             const { data: byName } = await svc.from("grupos").select("id").eq("nome", name).is("whatsapp_group_id", null).maybeSingle();
+            const insertData: any = { whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true };
+            if (lastMessageText) insertData.last_message = lastMessageText;
+            if (lastMessageAt) insertData.last_message_at = lastMessageAt;
             if (byName) {
-              await svc.from("grupos").update({ whatsapp_group_id: jid, ultima_atividade: new Date().toISOString(), gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId }).eq("id", byName.id);
+              await svc.from("grupos").update(insertData).eq("id", byName.id);
             } else {
-              await svc.from("grupos").insert({ nome: name, whatsapp_group_id: jid, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, status: "PENDENTE", sla: "DENTRO DO SLA", ultima_atividade: new Date().toISOString() });
+              await svc.from("grupos").insert({ nome: name, ...insertData, status: "PENDENTE", sla: "DENTRO DO SLA" });
             }
           }
           synced++;
