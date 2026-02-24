@@ -1,139 +1,79 @@
 
 
-## Analise Completa da Integração Evolution API
+## Diagnostico
 
-### Problemas Identificados
+Analisei os logs, banco de dados e codigo completo. Os problemas sao:
 
-Analisei os logs, banco de dados, webhook, orchestrator e analytics. Existem **3 problemas fundamentais** que impedem a conexao e sincronizacao de funcionar.
+1. **Instancias presas em "connecting"**: Ambas as instancias (robsonn, pessoal) estao com status "connecting" no banco mas ninguem verificou o estado real na Evolution API. O `check-status` nunca foi chamado com sucesso (0 logs). O polling apos QR code nao esta funcionando corretamente.
 
----
+2. **Webhook nunca recebeu eventos**: 0 logs no webhook. Mesmo com `setWebhook` configurado com sucesso, a Evolution API no IP `72.60.48.134` pode nao conseguir alcancar o URL do Supabase para enviar eventos.
 
-### Problema 1: Webhook nao configurado na Evolution API
+3. **Tabela `grupos` vazia**: 0 registros. Como o sync-groups exige status "connected" e nenhuma instancia chegou a esse estado, os paineis de monitoramento mostram apenas dados mock.
 
-A tabela `whatsapp_webhooks_log` esta **completamente vazia**. Isso significa que a Evolution API nunca enviou nenhum evento de volta para o Supabase. O fluxo esperado e:
+4. **Monitoramento mostra mock data**: O codigo em `Monitoramento.tsx` (linha 164) retorna mockData quando `dbGrupos.length === 0`. Isso e esperado, mas confuso para o usuario.
 
-```text
-1. Usuario clica "Conectar" → orchestrator chama /instance/connect → retorna QR Code → status = "connecting"
-2. Usuario escaneia QR → Evolution API envia evento "connection.update" via webhook → webhook function atualiza status = "connected"
-3. Com status "connected", sync-groups funciona
-```
-
-O passo 2 nunca acontece porque **ninguem configurou a URL do webhook na Evolution API**. Quando a instancia e criada ou conectada, o orchestrator nao registra o webhook URL. A instancia fica presa em "connecting" eternamente.
-
-**Correcao:** Ao criar a instancia (`create-instance`), chamar o endpoint da Evolution API para configurar o webhook apontando para `https://nmmbjptgrvsjqeytmxmw.supabase.co/functions/v1/whatsapp-webhook`. Tambem configurar ao conectar (`connect-instance`) como fallback.
+### Causa Raiz
+O fluxo de conexao depende do webhook da Evolution API para atualizar o status, mas o webhook nunca chega. O polling de fallback (`check-status`) deveria resolver isso, mas nao esta sendo executado efetivamente.
 
 ---
 
-### Problema 2: Status da instancia nunca atualiza para "connected"
+## Plano de Correcao
 
-Como consequencia do Problema 1, a instancia "robsonn" esta presa com `status: "connecting"` desde que foi criada. O `sync-groups` verifica `inst.status !== "connected"` e rejeita com erro.
-
-**Correcao adicional:** Criar uma action `check-status` que consulta diretamente a Evolution API (`/instance/connectionState/{instanceName}`) e atualiza o banco. Isso serve como fallback caso o webhook falhe. A UI tambem deve chamar esse check periodicamente ou ao clicar em "Conectar".
-
----
-
-### Problema 3: Evolution API possivelmente inacessivel
-
-O ultimo log de erro do orchestrator mostra:
-```
-Orchestrator error: A Evolution API não respondeu dentro de 25 segundos. TimeoutError
-```
-
-A URL configurada e `http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io` (HTTP, nao HTTPS). Supabase Edge Functions rodam na cloud e precisam acessar esse IP publicamente. Se `72.60.48.134` nao for um IP publico acessivel, o fetch sempre vai dar timeout.
-
-**Porem**, existem chamadas que retornaram 200 (list-providers, get-instances, get-qr-code) com sucesso em ~400-900ms. Isso sugere que o servidor **as vezes** responde. O timeout de 25s pode nao ser suficiente para operacoes mais pesadas como `fetchAllGroups`, ou o servidor pode estar instavel.
-
-**Correcao:** Nao ha correcao de codigo possivel para isso - depende da infraestrutura do usuario. Mas podemos melhorar o diagnostico adicionando logs e retornando informacoes mais claras.
-
----
-
-### Plano de Correcao Definitivo
-
-#### 1. Registrar webhook automaticamente ao criar/conectar instancia
+### 1. Connect-instance com verificacao previa de status real
 **Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
 
-Adicionar ao objeto `evo` um metodo `setWebhook` que chama `POST /webhook/set/{instanceName}` da Evolution API com a URL do webhook do Supabase:
+Antes de pedir QR code, o `connect-instance` deve verificar o estado real da instancia na Evolution API via `connectionState`. Se ja estiver "open" (conectada), atualizar o banco para "connected" e retornar sem QR code. Isso resolve instancias que foram conectadas mas cujo webhook nao chegou.
 
-```typescript
-setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
-  await safeJson(await fetch(`${c.base_url}/webhook/set/${n}`, {
-    method: "POST",
-    headers: headers(c),
-    body: JSON.stringify({
-      url: webhookUrl,
-      webhook_by_events: false,
-      webhook_base64: false,
-      events: [
-        "connection.update",
-        "qrcode.updated",
-        "messages.upsert",
-        "messages.update",
-        "status.instance"
-      ]
-    }),
-    signal: sig()
-  }));
-}
 ```
-
-Chamar `evo.setWebhook()` dentro de `create-instance` e `connect-instance`, usando a URL:
-`https://nmmbjptgrvsjqeytmxmw.supabase.co/functions/v1/whatsapp-webhook`
-
-#### 2. Adicionar action `check-status` para polling direto
-**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
-
-Nova action que consulta `/instance/connectionState/{instanceName}` e atualiza o status no banco:
-
-```typescript
-case "check-status": {
+case "connect-instance": {
   const inst = await getInst(params.instanceId);
   const { config } = await resolveProvider(inst.provider_id);
-  const d = await safeJson(await fetch(
-    `${config.base_url}/instance/connectionState/${inst.instance_name}`,
-    { headers: authOnly(config), signal: sig() }
-  ));
-  const state = d?.instance?.state || d?.state || "unknown";
-  const statusMap: Record<string, string> = { open: "connected", close: "disconnected", connecting: "connecting" };
-  const newStatus = statusMap[state] || "disconnected";
-  await svc.from("whatsapp_instances").update({ status: newStatus }).eq("id", params.instanceId);
-  if (newStatus === "connected") {
-    await svc.from("whatsapp_instances").update({ qr_code: null }).eq("id", params.instanceId);
-  }
-  result = { state, status: newStatus };
-  break;
+  
+  // Check real status first
+  try {
+    const realState = await evo.connectionState(inst.instance_name, config);
+    if (realState === "open") {
+      await svc.from("whatsapp_instances").update({ status: "connected", qr_code: null }).eq("id", params.instanceId);
+      result = { alreadyConnected: true, status: "connected" };
+      break;
+    }
+  } catch {}
+  
+  // If not connected, proceed with QR code flow
+  const webhookUrl = ...;
+  await evo.setWebhook(...);
+  const r = await evo.connect(...);
+  ...
 }
 ```
 
-#### 3. UI: Polling automatico de status e botao de verificar conexao
-**Arquivos:** `src/hooks/useWhatsAppInstances.ts`, `src/pages/Conexoes.tsx`
+### 2. Check-status com auto-sync
+**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
 
-- Adicionar hook `useCheckStatus` que chama a action `check-status`
-- No fluxo de `handleConnect`, apos exibir o QR Code, iniciar um polling a cada 5 segundos chamando `check-status` ate o status mudar para "connected" (max 60s)
-- Adicionar botao "Verificar Status" na lista de instancias
+Quando `check-status` detectar que a instancia mudou para "connected", retornar um flag `justConnected: true` para a UI saber que deve sincronizar automaticamente.
 
-#### 4. UI: Apos status mudar para "connected", sincronizar automaticamente
+### 3. UI: Auto-check ao carregar pagina
 **Arquivo:** `src/pages/Conexoes.tsx`
 
-Quando o polling detectar que o status mudou para "connected", automaticamente disparar `syncGroups.mutate(instanceId)` e exibir toast de sucesso.
+Ao montar a pagina, para cada instancia com status "connecting", disparar automaticamente um `check-status`. Se alguma voltar como "connected", disparar sync-groups. Isso captura conexoes que aconteceram enquanto o usuario nao estava na pagina.
+
+### 4. UI: HandleConnect trata alreadyConnected
+**Arquivo:** `src/pages/Conexoes.tsx`
+
+Quando `connect-instance` retornar `alreadyConnected: true`, pular o QR modal e ir direto para sync de grupos com toast de sucesso.
+
+### 5. Monitoring: Mensagem clara quando sem dados reais
+**Arquivo:** `src/pages/Monitoramento.tsx`
+
+Em vez de mostrar dados mock que confundem, mostrar uma mensagem indicando que nenhum grupo foi sincronizado ainda, com instrucao para ir a pagina de Conexoes.
 
 ---
 
-### Detalhes Tecnicos
+### Resumo dos Arquivos
 
-**Mudancas no orchestrator (`whatsapp-orchestrator/index.ts`):**
-- Novo metodo `evo.setWebhook()`
-- `create-instance`: chamar `setWebhook` apos criar instancia
-- `connect-instance`: chamar `setWebhook` apos conectar
-- Novo case `check-status` para polling de estado
-
-**Mudancas no hook (`useWhatsAppInstances.ts`):**
-- Nova funcao `useCheckStatus` mutation
-- Logica de polling com `setInterval` + cleanup
-
-**Mudancas na pagina (`Conexoes.tsx`):**
-- Polling automatico quando QR modal esta aberto
-- Sync automatico quando status muda para "connected"
-- Botao "Verificar Status" por instancia
-
-**Nota importante:** O webhook URL do Supabase (`https://...supabase.co/functions/v1/whatsapp-webhook`) precisa estar acessivel pela Evolution API. Como a Evolution API roda no IP `72.60.48.134`, ela precisa ter acesso a internet para enviar eventos para o Supabase. Se estiver em rede interna sem acesso externo, os webhooks nunca chegarao.
+| Arquivo | Mudanca |
+|---------|---------|
+| `whatsapp-orchestrator/index.ts` | connect-instance verifica status real antes de QR; check-status retorna flag justConnected |
+| `Conexoes.tsx` | Auto-check de status ao carregar; handleConnect trata alreadyConnected; auto-sync |
+| `Monitoramento.tsx` | Remover mock data, mostrar mensagem de "nenhum grupo sincronizado" quando tabela vazia |
 
