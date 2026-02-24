@@ -1,26 +1,12 @@
 
 
-## Plano: Compactar Summary Cards na página Anomalias
+## Plan: Rename "Descrição" → "Conversas"
 
-Aplicar o mesmo estilo compacto do Hub do Colaborador e Painel por Squad nos cards de resumo da página Anomalias.
+The search found 4 files with "Descrição" column headers. Per the user's request, we need to update only the 3 monitoring-related pages (excluding Anomalias, which is a different context):
 
-### Arquivo: `src/pages/Anomalias.tsx`
+1. **`src/pages/Monitoramento.tsx`** (line 343): Change `DESCRIÇÃO` → `CONVERSAS`
+2. **`src/pages/Hub.tsx`** (line 367): Change `DESCRIÇÃO` → `CONVERSAS` (Painel de monitoramento Pessoal)
+3. **`src/pages/Squads.tsx`** (line 493): Change `DESCRIÇÃO` → `CONVERSAS` (Grupo do Squad)
 
-#### 1. Summary Cards — layout horizontal compacto
-- Mudar `SummaryCard` de layout vertical para horizontal (`flex items-center gap-2`)
-- Reduzir padding de `p-4` para `px-3 py-2`
-- Reduzir valor de `text-2xl` para `text-lg`
-- Reduzir label de `text-xs` para `text-[10px]`
-- Adicionar icone container `w-7 h-7` com cor de fundo baseada na cor do card (mesmo padrão do Hub)
-
-#### 2. Reduzir gap geral
-- Reduzir `space-y-6` do container principal para `space-y-3`
-- Reduzir gap do grid de `gap-4` para `gap-3`
-
-#### 3. Header — compactar
-- Reduzir titulo de `text-2xl` para `text-lg`
-- Reduzir subtitulo de `text-xl` para `text-base`
-
-### Resultado
-Mesma compactação do Hub e Squads (~35% menos altura), visual consistente entre todas as páginas.
+All changes are simple string replacements in table header `<th>` elements. No logic or data changes required.
 
