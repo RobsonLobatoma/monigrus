@@ -78,6 +78,17 @@ const Squads = () => {
       {/* Squad overview cards - show when a specific squad is selected */}
       {currentSquad ? (
         <>
+          {/* Back button */}
+          {!isSupervisor && (
+            <button
+              onClick={() => setSelectedSquadId(null)}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              Voltar para todos os squads
+            </button>
+          )}
+
           {/* Squad header */}
           <div className="rounded-xl bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 p-5">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
