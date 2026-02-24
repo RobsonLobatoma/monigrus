@@ -244,15 +244,15 @@ export default function Hub() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* ── Hero Banner ── */}
       <div
-        className="rounded-2xl px-8 py-7"
+        className="rounded-2xl px-6 py-4"
         style={{ background: "linear-gradient(135deg, #3b5bdb 0%, #6741d9 100%)" }}
       >
-        <h1 className="text-3xl font-extrabold text-white mb-1">Olá, {displayName}!</h1>
-        <p className="text-white/80 text-base mb-3">Estes são os grupos sob sua responsabilidade direta.</p>
-        <p className="text-[11px] font-bold uppercase tracking-widest text-white/60">
+        <h1 className="text-xl font-extrabold text-white mb-0.5">Olá, {displayName}!</h1>
+        <p className="text-white/80 text-sm mb-1">Estes são os grupos sob sua responsabilidade direta.</p>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
           Seu desempenho impacta diretamente o score da unidade.
         </p>
       </div>
@@ -321,16 +321,16 @@ export default function Hub() {
       {/* ── Metric cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "MEUS GRUPOS",  value: totalGrupos,     sub: "grupos monitorados",    icon: <Users size={18} className="text-primary" />,        accent: "bg-primary/10" },
-          { label: "CRÍTICOS",     value: criticos,         sub: "requerem atenção",      icon: <AlertTriangle size={18} className="text-red-500" />, accent: "bg-red-500/10" },
-          { label: "SCORE MÉDIO",  value: `${scoreMedia}`,  sub: "pontuação da carteira", icon: <TrendingUp size={18} className="text-green-500" />, accent: "bg-green-500/10" },
-          { label: "RESOLVIDOS",   value: resolvidos,       sub: "neste ciclo",           icon: <Shield size={18} className="text-blue-500" />,      accent: "bg-blue-500/10" },
+          { label: "MEUS GRUPOS",  value: totalGrupos,     sub: "grupos monitorados",    icon: <Users size={14} className="text-primary" />,        accent: "bg-primary/10" },
+          { label: "CRÍTICOS",     value: criticos,         sub: "requerem atenção",      icon: <AlertTriangle size={14} className="text-red-500" />, accent: "bg-red-500/10" },
+          { label: "SCORE MÉDIO",  value: `${scoreMedia}`,  sub: "pontuação da carteira", icon: <TrendingUp size={14} className="text-green-500" />, accent: "bg-green-500/10" },
+          { label: "RESOLVIDOS",   value: resolvidos,       sub: "neste ciclo",           icon: <Shield size={14} className="text-blue-500" />,      accent: "bg-blue-500/10" },
         ].map((card) => (
-          <div key={card.label} className="rounded-xl border border-border bg-card px-5 py-4 space-y-3">
-            <div className={`w-9 h-9 rounded-lg ${card.accent} flex items-center justify-center`}>{card.icon}</div>
+          <div key={card.label} className="rounded-xl border border-border bg-card px-4 py-3 space-y-1">
+            <div className={`w-7 h-7 rounded-lg ${card.accent} flex items-center justify-center`}>{card.icon}</div>
             <div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{card.label}</p>
-              <p className="text-2xl font-bold text-foreground mt-0.5">{card.value}</p>
+              <p className="text-xl font-bold text-foreground mt-0.5">{card.value}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{card.sub}</p>
             </div>
           </div>
