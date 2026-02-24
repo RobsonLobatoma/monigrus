@@ -245,6 +245,11 @@ Deno.serve(async (req) => {
         const { adapter, config, providerRow } = await resolveProviderConfig(providerId);
         const apiResult = await withRetry(() => adapter.createInstance(instanceName, config));
 
+        // Validate API response before saving to DB
+        if (apiResult?.status === 404 || apiResult?.error) {
+          throw new Error(`Evolution API error: ${apiResult?.error || "Not Found"} - ${JSON.stringify(apiResult?.response || {})}`);
+        }
+
         const { data } = await serviceClient
           .from("whatsapp_instances")
           .insert({ instance_name: instanceName, provider_id: providerRow.id, status: "disconnected" })
