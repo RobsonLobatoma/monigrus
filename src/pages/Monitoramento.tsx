@@ -150,18 +150,17 @@ export default function Monitoramento() {
     [keywordSettings]
   );
 
-  if (!roleLoading && role === "OPERACIONAL") {
-    return <Navigate to="/" replace />;
-  }
-
   const teamMap = useMemo(() => {
     const m: Record<string, string> = {};
     teams?.forEach(t => { m[t.id] = t.name; });
     return m;
   }, [teams]);
 
+  const hasRealData = dbGrupos && dbGrupos.length > 0;
+
+
   const data = useMemo((): MonitoringRow[] => {
-    if (dbGrupos && dbGrupos.length > 0) {
+    if (hasRealData) {
       return dbGrupos.map((g) => {
         const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
         return {
@@ -179,8 +178,8 @@ export default function Monitoramento() {
         };
       });
     }
-    return mockData;
-  }, [dbGrupos, scoreToSatisfacao, teamMap]);
+    return [];
+  }, [dbGrupos, hasRealData, scoreToSatisfacao, teamMap]);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -223,6 +222,10 @@ export default function Monitoramento() {
       return matchSearch && matchGestor && matchDate;
     });
   }, [data, search, filterGestor, dateRange]);
+
+  if (!roleLoading && role === "OPERACIONAL") {
+    return <Navigate to="/" replace />;
+  }
 
   function renderDescricao(text: string) {
     if (activeKeywords.length === 0) return `"${text}"`;
@@ -357,7 +360,16 @@ export default function Monitoramento() {
           </thead>
 
           <tbody>
-            {filtered.length === 0 ? (
+            {!hasRealData ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "16px", fontWeight: 600 }}>Nenhum grupo sincronizado</span>
+                    <span>Vá para a página de <a href="/conexoes" style={{ color: "hsl(var(--primary))", textDecoration: "underline" }}>Conexões</a> para conectar uma instância e sincronizar grupos do WhatsApp.</span>
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
               <tr>
                 <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   Nenhum resultado encontrado.
