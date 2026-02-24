@@ -1,9 +1,16 @@
 import { useState, useMemo } from "react";
-import { Shield, Search } from "lucide-react";
+import { Shield, Search, CalendarIcon, X, Filter } from "lucide-react";
+import { subDays, format } from "date-fns";
+import { DateRange } from "react-day-picker";
 import { useGrupos } from "@/hooks/useGrupos";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
 import { Navigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 type Satisfacao = string;
 type StatusType = string;
@@ -30,7 +37,6 @@ const mockData: MonitoringRow[] = [
   { id: "mock-7", dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar." },
 ];
 
-/* Fallback styles */
 const FALLBACK_SAT_STYLE: Record<string, { background: string; color: string }> = {
   "Ótimo":   { background: "#22c55e", color: "#ffffff" },
   "Regular": { background: "#facc15", color: "#000000" },
@@ -73,18 +79,30 @@ const cellFill: React.CSSProperties = {
   fontSize: "13px",
 };
 
+function parseDateString(dateStr: string): Date | null {
+  if (!dateStr || dateStr === "—") return null;
+  const clean = dateStr.replace("\n", " ").trim();
+  const match = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})$/);
+  if (match) {
+    return new Date(+match[3], +match[2] - 1, +match[1], +match[4], +match[5]);
+  }
+  const d = new Date(clean);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function Monitoramento() {
   const { data: dbGrupos } = useGrupos();
-  const { role, teamId: currentTeamId, loading: roleLoading } = useCurrentUserRole();
+  const { role, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
+  const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
+  const [filterGestor, setFilterGestor] = useState("all");
 
-  // Dynamic settings from DB
   const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
   const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
   const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
   const { data: keywordSettings = [] } = useMonitoringSettings("PALAVRA_CHAVE");
 
-  // Build dynamic color maps with fallback
   const satStyleMap = useMemo(() => {
     const map: Record<string, { background: string; color: string }> = { ...FALLBACK_SAT_STYLE };
     satSettings.forEach((s) => {
@@ -105,7 +123,6 @@ export default function Monitoramento() {
     return map;
   }, [statusSettings]);
 
-  // Score-to-satisfacao mapping
   const scoreToSatisfacao = useMemo(() => {
     if (scoreSettings.length === 0) {
       return (score: number): string => {
@@ -124,19 +141,13 @@ export default function Monitoramento() {
     };
   }, [scoreSettings]);
 
-  // Active keywords
   const activeKeywords = useMemo(
     () => keywordSettings.filter((k) => k.is_active).map((k) => k.label.toLowerCase()),
     [keywordSettings]
   );
 
-  // OPERACIONAL não acessa Monitoramento
   if (!roleLoading && role === "OPERACIONAL") {
     return <Navigate to="/" replace />;
-  }
-
-  function mapStatusToSatisfacao(status: string, score: number): string {
-    return scoreToSatisfacao(score);
   }
 
   const data = useMemo((): MonitoringRow[] => {
@@ -159,15 +170,48 @@ export default function Monitoramento() {
     return mockData;
   }, [dbGrupos, scoreToSatisfacao]);
 
-  const filtered = data.filter(
-    (row) =>
-      row.grupo.toLowerCase().includes(search.toLowerCase()) ||
-      row.gestorTrafego.toLowerCase().includes(search.toLowerCase()) ||
-      row.squad.toLowerCase().includes(search.toLowerCase()) ||
-      row.status.toLowerCase().includes(search.toLowerCase())
-  );
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (filterPeriod) {
+      case "7d": return { from: subDays(now, 7), to: now };
+      case "14d": return { from: subDays(now, 14), to: now };
+      case "30d": return { from: subDays(now, 30), to: now };
+      case "custom": return customDateRange ? { from: customDateRange.from, to: customDateRange.to } : { from: undefined, to: undefined };
+      default: return { from: undefined, to: undefined };
+    }
+  }, [filterPeriod, customDateRange]);
 
-  // Highlight keywords in description
+  const gestoresList = useMemo(() => {
+    const set = new Set(data.map((r) => r.gestorTrafego).filter((g) => g !== "—"));
+    return Array.from(set).sort();
+  }, [data]);
+
+  const hasActiveFilters = filterPeriod !== "all" || filterGestor !== "all" || search !== "";
+  const clearAllFilters = () => {
+    setFilterPeriod("all");
+    setCustomDateRange(undefined);
+    setFilterGestor("all");
+    setSearch("");
+  };
+
+  const filtered = useMemo(() => {
+    return data.filter((row) => {
+      const matchSearch = search === "" ||
+        row.grupo.toLowerCase().includes(search.toLowerCase()) ||
+        row.gestorTrafego.toLowerCase().includes(search.toLowerCase()) ||
+        row.squad.toLowerCase().includes(search.toLowerCase()) ||
+        row.status.toLowerCase().includes(search.toLowerCase());
+      const matchGestor = filterGestor === "all" || row.gestorTrafego === filterGestor;
+      let matchDate = true;
+      if (dateRange.from) {
+        const d = parseDateString(row.dataHora);
+        if (!d) { matchDate = false; }
+        else { matchDate = d >= dateRange.from && d <= (dateRange.to ?? new Date()); }
+      }
+      return matchSearch && matchGestor && matchDate;
+    });
+  }, [data, search, filterGestor, dateRange]);
+
   function renderDescricao(text: string) {
     if (activeKeywords.length === 0) return `"${text}"`;
     const regex = new RegExp(`(${activeKeywords.map(escapeRegex).join("|")})`, "gi");
@@ -190,25 +234,87 @@ export default function Monitoramento() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <Shield className="text-primary" size={26} />
-          <h1 className="text-2xl font-bold text-foreground">
-            Painel de Monitoramento{" "}
-            <span className="text-muted-foreground font-medium text-xl">(GLOBAL)</span>
-          </h1>
-        </div>
+      <div className="flex items-center gap-3">
+        <Shield className="text-primary" size={26} />
+        <h1 className="text-2xl font-bold text-foreground">
+          Painel de Monitoramento{" "}
+          <span className="text-muted-foreground font-medium text-xl">(GLOBAL)</span>
+        </h1>
+      </div>
+
+      {/* ── Barra de filtros global ── */}
+      <div className="flex items-center flex-wrap gap-2 bg-muted/30 rounded-lg p-3 border">
+        <Filter size={14} className="text-muted-foreground" />
+        {(["7d", "14d", "30d"] as const).map((p) => (
+          <Button
+            key={p}
+            size="sm"
+            variant={filterPeriod === p ? "default" : "outline"}
+            className="h-8 text-xs"
+            onClick={() => setFilterPeriod(filterPeriod === p ? "all" : p)}
+          >
+            {p === "7d" ? "7 dias" : p === "14d" ? "14 dias" : "30 dias"}
+          </Button>
+        ))}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              size="sm"
+              variant={filterPeriod === "custom" ? "default" : "outline"}
+              className="h-8 text-xs gap-1"
+            >
+              <CalendarIcon size={12} />
+              {filterPeriod === "custom" && customDateRange?.from
+                ? `${format(customDateRange.from, "dd/MM")}${customDateRange.to ? ` - ${format(customDateRange.to, "dd/MM")}` : ""}`
+                : "Personalizado"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="range"
+              selected={customDateRange}
+              onSelect={(range) => {
+                setCustomDateRange(range);
+                setFilterPeriod("custom");
+              }}
+              numberOfMonths={2}
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+
+        <div className="w-px h-6 bg-border" />
+
+        <Select value={filterGestor} onValueChange={setFilterGestor}>
+          <SelectTrigger className="h-8 w-[180px] text-xs">
+            <SelectValue placeholder="Gestor de tráfego" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os gestores</SelectItem>
+            {gestoresList.map((g) => (
+              <SelectItem key={g} value={g}>{g}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <div className="w-px h-6 bg-border" />
 
         <div className="relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
             placeholder="Buscar grupo..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 pr-4 py-2 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-64 transition-all"
+            className="pl-9 pr-4 py-1.5 rounded-full border border-border bg-background text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-48"
           />
         </div>
+
+        {hasActiveFilters && (
+          <Button size="sm" variant="ghost" className="h-8 text-xs gap-1 text-muted-foreground" onClick={clearAllFilters}>
+            <X size={12} /> Limpar
+          </Button>
+        )}
       </div>
 
       {/* Table card */}
@@ -326,7 +432,6 @@ export default function Monitoramento() {
           </tbody>
         </table>
 
-        {/* Footer count */}
         <div className="px-4 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">
           {filtered.length} de {data.length} registros exibidos
         </div>
@@ -335,7 +440,6 @@ export default function Monitoramento() {
   );
 }
 
-/* ─── Helpers ─── */
 function isLightColor(hex: string): boolean {
   const c = hex.replace("#", "");
   const r = parseInt(c.substring(0, 2), 16);
