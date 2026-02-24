@@ -2,90 +2,83 @@
 
 ## Diagnostico
 
-O `sync-groups` atual (linhas 281-385) faz tudo em uma unica chamada:
-1. `fetchAllGroups` — retorna TODOS os grupos de uma vez (payload enorme com ~1000 grupos)
-2. Loop sequencial com 1 query por grupo (1000 queries individuais ao banco)
-3. `findChats` — outro payload enorme
-4. Loop sequencial para atualizar mensagens
+A tabela `tags` ja existe no banco com campos `id`, `nome`, `cor`, `organization_id`. A tabela `grupos` ja tem `tag_id` (uuid, nullable). A infraestrutura de dados ja esta pronta.
 
-Com ~1000 grupos isso facilmente estoura o timeout de 45s da Edge Function e o limite de execucao do Supabase.
-
-## Solucao
-
-Implementar sincronizacao em batches **dentro da mesma Edge Function**, sem criar tabelas novas desnecessarias. A tabela `grupos` ja tem todos os campos necessarios (`ativo`, `last_message_at`, `instance_id`). Nao precisa de `whatsapp_groups` nem `sync_progress` — isso adicionaria complexidade sem resolver o problema real.
-
-O problema real eh:
-1. O loop faz 1 query por grupo (N queries) — resolver com **upsert em batch**
-2. O payload do `fetchAllGroups` pode ser grande mas eh uma unica chamada HTTP — isso nao causa timeout
-3. O processamento sequencial de ~1000 grupos no banco causa timeout — resolver com batches de INSERT/UPDATE
+O que falta:
+1. Tela de gerenciamento de tags dentro de Conexoes
+2. Atribuicao de tag a grupos
+3. Seletor de tag no botao de sync
+4. Passagem do `tagId` para a Edge Function
 
 ---
 
 ## Plano de Implementacao
 
-### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
+### ETAPA 1 — Hook `useTags`
 
-**Mudanca 1** — Reescrever o case `sync-groups` para processar em batches de 50 grupos usando `upsert` em vez de queries individuais:
+**Novo arquivo: `src/hooks/useTags.ts`**
 
+CRUD de tags usando a tabela `tags` existente:
+- `useTags()` — query que lista todas as tags da organizacao
+- `useCreateTag()` — mutation para criar tag (nome + cor + organization_id)
+- `useUpdateTag()` — mutation para editar tag
+- `useDeleteTag()` — mutation para deletar tag
+
+Precisa obter o `organization_id` do usuario logado. Buscar via `organization_members` onde `user_id = auth.uid()`.
+
+### ETAPA 2 — Aba "Tags" na pagina Conexoes
+
+**Arquivo: `src/pages/Conexoes.tsx`**
+
+Adicionar uma 5a aba `<TabsTrigger value="tags">Tags</TabsTrigger>` ao `TabsList` existente.
+
+Conteudo da aba:
+- Card com formulario inline para criar tag (campo nome + seletor de cor + botao criar)
+- Tabela listando tags existentes com colunas: Cor (circulo colorido), Nome, Acoes (editar/excluir)
+- Edicao inline do nome e cor
+- Botao de excluir com confirmacao
+
+### ETAPA 3 — Seletor de tag no botao de sincronizar
+
+**Arquivo: `src/pages/Conexoes.tsx`**
+
+Substituir o botao simples de sync (linha 287) por um dropdown que contém:
+- Opcao "Sincronizar todos" (sem tag)
+- Lista de tags disponiveis
+- Ao selecionar uma tag, chama `handleSyncGroups(inst.id, tagId)`
+
+Usar `Popover` com lista de tags. O botao principal continua sendo o icone `RefreshCw`, mas ao clicar abre o popover com as opcoes.
+
+### ETAPA 4 — Passar `tagId` para a Edge Function
+
+**Arquivo: `src/hooks/useWhatsAppInstances.ts`**
+
+Modificar `useSyncGroups` para aceitar `tagId` opcional:
 ```text
-sync-groups reescrito:
-
-1. Buscar todos os grupos da Evolution API (1 chamada — inevitavel)
-2. Buscar todos os grupos existentes no banco para esta instancia (1 query)
-3. Dividir grupos da API em batches de 50
-4. Para cada batch:
-   a. Separar em "existentes" (update) e "novos" (insert)
-   b. Fazer upsert em batch via Supabase (1-2 queries por batch, nao 50)
-   c. Acumular mapa jid→id
-5. Buscar chats (findChats — 1 chamada)
-6. Atualizar last_message em batches de 50
-7. Verificar webhook
+mutationFn: ({ instanceId, tagId }: { instanceId: string; tagId?: string }) =>
+  invoke("sync-groups", { instanceId, tagId })
 ```
 
-Isso reduz de ~1000 queries individuais para ~40 queries em batch (20 batches × 2 ops).
+**Arquivo: `src/pages/Conexoes.tsx`**
 
-**Mudanca 2** — Adicionar early timeout protection:
+Atualizar `handleSyncGroups` para aceitar e passar `tagId`.
 
-```text
-const startTime = Date.now();
-const MAX_EXEC_MS = 40000; // 40s — deixar 5s de margem
+### ETAPA 5 — Edge Function: aplicar `tag_id` nos grupos sincronizados
 
-// Em cada iteracao de batch:
-if (Date.now() - startTime > MAX_EXEC_MS) {
-  console.log(`[sync-groups] Time limit reached at batch ${i}`);
-  break; // Salva o que ja processou
-}
-```
+**Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`**
 
-**Mudanca 3** — Buscar grupos existentes em uma unica query em vez de N queries individuais:
+No case `sync-groups`, se `params.tagId` estiver presente:
+- Adicionar `tag_id: params.tagId` nos inserts de novos grupos
+- Adicionar `tag_id: params.tagId` nos updates de grupos existentes
+- Isso permite que o sync "marque" os grupos com a tag selecionada
 
-```text
-// ANTES (1 query por grupo):
-for (const wg of waGroups) {
-  const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
-}
+Se `params.tagId` for null/undefined, nao altera o `tag_id` existente.
 
-// DEPOIS (1 query total):
-const { data: allExisting } = await svc.from("grupos")
-  .select("id, gestor, whatsapp_group_id, nome")
-  .eq("instance_id", inst.id);
-const existingMap = new Map(allExisting?.map(g => [g.whatsapp_group_id, g]) || []);
-```
+### ETAPA 6 — Atribuicao de tag individual na tela de Monitoramento
 
-**Mudanca 4** — Usar batched updates em vez de updates individuais para mensagens:
+**Arquivo: `src/pages/Monitoramento.tsx`**
 
-```text
-// Em vez de 1 update por grupo para last_message:
-// Acumular e fazer updates em batch de 50
-```
-
-### Nenhuma mudanca de schema necessaria
-
-A tabela `grupos` ja tem `ativo`, `last_message`, `last_message_at`, `instance_id`. Nao eh necessario criar tabelas novas. Tags e filtros de ativo/inativo podem ser adicionados depois como feature separada — o problema imediato eh o timeout.
-
-### Nenhuma mudanca no frontend
-
-O frontend ja chama `syncGroups.mutate(instanceId)` e exibe o resultado. A resposta continua sendo `{ synced, total, messagesFound }`.
+Na tabela de grupos, adicionar uma coluna "Tag" com um `Select` que permite escolher uma tag para cada grupo. Ao selecionar, faz update direto via `useUpdateGrupo`.
 
 ---
 
@@ -93,13 +86,16 @@ O frontend ja chama `syncGroups.mutate(instanceId)` e exibe o resultado. A respo
 
 | Arquivo | Mudanca |
 |---------|---------|
-| `supabase/functions/whatsapp-orchestrator/index.ts` | Reescrever `sync-groups`: pre-carregar existentes em 1 query, processar em batches de 50 com upsert, timeout protection de 40s, batch updates para mensagens |
+| `src/hooks/useTags.ts` | Novo hook CRUD para tabela `tags` |
+| `src/hooks/useWhatsAppInstances.ts` | `useSyncGroups` aceita `{ instanceId, tagId? }` |
+| `src/pages/Conexoes.tsx` | Nova aba Tags + popover no botao sync com seletor de tag |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | `sync-groups` aplica `tag_id` quando passado |
+| `src/pages/Monitoramento.tsx` | Coluna Tag com select para atribuicao individual |
 
 ## Resultado esperado
 
-1. Sincronizacao de ~1000 grupos completa em <40s (vs timeout atual)
-2. ~20 queries ao banco em vez de ~1000
-3. Se atingir o limite de tempo, salva o progresso parcial
-4. Sem mudancas no banco ou frontend
-5. Mesma API, mesma resposta, mesma UX
+1. Gerenciamento completo de tags (CRUD) dentro de Conexoes
+2. Sincronizacao com tag opcional — marca os grupos sincronizados com a tag escolhida
+3. Atribuicao individual de tag por grupo no Monitoramento
+4. Tags com nome e cor visualmente distintas
 
