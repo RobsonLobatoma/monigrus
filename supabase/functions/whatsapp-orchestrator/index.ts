@@ -110,8 +110,18 @@ Deno.serve(async (req) => {
         ? await supabase.from("whatsapp_providers").select("*").eq("id", providerId).single()
         : await supabase.from("whatsapp_providers").select("*").eq("is_default", true).eq("is_active", true).single();
       if (!row) throw new Error("No active provider");
-      const baseUrl = (row.config as any)?.base_url?.replace(/\/+$/, "");
+      let baseUrl = (row.config as any)?.base_url?.replace(/\/+$/, "");
       if (!baseUrl) throw new Error("Provider base_url not configured");
+      // Proactively convert HTTPS → HTTP for domains with self-signed certificates
+      if (baseUrl.startsWith("https://")) {
+        try {
+          const hostname = new URL(baseUrl).hostname;
+          if (hostname.includes("sslip.io") || hostname.includes("nip.io") || /\d+\.\d+\.\d+\.\d+/.test(hostname)) {
+            baseUrl = baseUrl.replace("https://", "http://");
+            console.log("[resolveProvider] Auto-converted to HTTP:", baseUrl);
+          }
+        } catch {}
+      }
       const apiKey = Deno.env.get((row.config as any)?.api_key_secret_name || "EVOLUTION_API_KEY") || "";
       return { config: { base_url: baseUrl, api_key: apiKey } as ProviderConfig, row };
     };
