@@ -1,36 +1,54 @@
 
 
-## Plano: Adicionar filtros de Data e Gestor de Trafego na tabela "Grupos do Squad"
+## Plano: Mover filtros para o topo da pagina e adicionar filtro de periodo
 
 ### Problema
-Apos selecionar um squad, a tabela "Grupos do Squad" so tem um campo de busca textual. O usuario precisa de filtros dedicados por data e por gestor de trafego.
+Os filtros de data e gestor estao dentro do card "Grupos do Squad". O usuario quer que eles fiquem no topo da pagina (apos selecionar um squad) para filtrar todos os paineis, e que o filtro de data use opcoes de periodo (7 dias, 14 dias, 30 dias, personalizado) em vez de selecionar um unico dia.
 
 ### Arquivo a modificar: `src/pages/Squads.tsx`
 
 ### Alteracoes
 
-1. **Novos imports**: Adicionar `CalendarIcon`, `Filter` do lucide-react; `Popover`, `PopoverContent`, `PopoverTrigger` de `@/components/ui/popover`; `Calendar` de `@/components/ui/calendar`; `Button` de `@/components/ui/button`; `format` de `date-fns`
+1. **Substituir estados de filtro** (linhas 71-72):
+   - Remover `filterDate: Date | undefined`
+   - Adicionar `filterPeriod: string` com valores `"7d"`, `"14d"`, `"30d"`, `"custom"`, `"all"`
+   - Adicionar `customDateRange: { from: Date | undefined; to: Date | undefined }`
+   - Manter `filterGestor`
 
-2. **Novos estados** (junto aos existentes, linha ~63):
-   - `const [filterDate, setFilterDate] = useState<Date | undefined>(undefined)`
-   - `const [filterGestor, setFilterGestor] = useState<string>("all")`
+2. **Novo memo `dateRange`**: Calcula `startDate` e `endDate` baseado no periodo selecionado:
+   - `"7d"` → ultimos 7 dias
+   - `"14d"` → ultimos 14 dias
+   - `"30d"` → ultimos 30 dias
+   - `"custom"` → usa `customDateRange`
+   - `"all"` → sem filtro de data
 
-3. **Lista unica de gestores** (memo):
-   - Extrair todos os valores distintos de `gestorTrafego` do `squadGrupos` para popular o Select de gestores
+3. **Adicionar barra de filtros no topo** (apos o bloco do "squad header" com capacidade, linha ~236, antes dos KPIs):
+   - Um card/barra horizontal com:
+     - Botoes de periodo: `7 dias`, `14 dias`, `30 dias`, `Personalizado` (usando ToggleGroup ou botoes com estilo ativo)
+     - Quando "Personalizado" selecionado, mostrar Popover com Calendar `mode="range"`
+     - Select de gestor de trafego (movido daqui)
+     - Campo de busca (movido daqui)
+     - Botao "Limpar filtros"
 
-4. **Atualizar `filteredGrupos`** (linha ~126): Adicionar condicoes ao filtro existente:
-   - Se `filterDate` estiver definido, comparar a data de `row.dataHora` com a data selecionada
-   - Se `filterGestor` nao for `"all"`, filtrar por `row.gestorTrafego === filterGestor`
+4. **Atualizar `squadGrupos`** (linha ~123): Aplicar filtro de data aqui (comparando `ultima_atividade` com o range calculado) para que os dados filtrados afetem tambem os KPIs e gestores
 
-5. **No JSX do CardHeader da tabela** (linhas ~313-329): Adicionar uma barra de filtros ao lado do campo de busca contendo:
-   - Um `Popover` com `Calendar` (mode="single") para selecionar data, com botao mostrando a data selecionada ou "Filtrar por data"
-   - Um `Select` para gestor de trafego com opcao "Todos os gestores" + lista dinamica
-   - Manter o campo de busca existente
+5. **Atualizar KPIs** (linhas 239-296): Recalcular valores baseados em `filteredGrupos` em vez de `currentSquad` fixo:
+   - Score medio = media dos scores dos grupos filtrados
+   - Grupos criticos = contagem de status "CRITICO" nos grupos filtrados
+   - Alertas ativos = manter do currentSquad (anomalias nao tem filtro de gestor)
+
+6. **Atualizar tabela de Gestores** (linhas 298-336): Filtrar `gestorMetrics` pelo `filterGestor` se nao for "all"
+
+7. **Remover filtros do card "Grupos do Squad"** (linhas 359-404): Remover a secao de filtros do CardHeader, manter apenas o titulo
+
+8. **Atualizar `filteredGrupos`** (linha 148): Adaptar para usar o range de datas em vez de data unica
 
 ### Detalhes Tecnicos
 
-- O filtro de data compara apenas a parte de data (YYYY-MM-DD) do campo `ultima_atividade` com a data selecionada via `format(filterDate, "yyyy-MM-dd")`
-- O Calendar usa `className="p-3 pointer-events-auto"` para funcionar dentro do Popover
-- Os filtros sao resetados quando o usuario troca de squad (via efeito no `effectiveTeamId`)
-- Layout responsivo: filtros empilham em telas menores usando `flex-wrap`
+- Import `subDays` de `date-fns` para calcular periodos
+- O filtro de data compara `new Date(row.dataHora) >= startDate && new Date(row.dataHora) <= endDate`
+- O Calendar em modo `"range"` usa `selected={{ from, to }}` e `onSelect` recebe `DateRange`
+- Botoes de periodo usam estilo `variant={filterPeriod === "7d" ? "default" : "outline"}` para indicar ativo
+- Reset de filtros no `useEffect` do `effectiveTeamId` agora reseta `filterPeriod` para `"all"`
+- Layout da barra: `flex items-center flex-wrap gap-2` com fundo `bg-muted/30 rounded-lg p-3 border`
 
