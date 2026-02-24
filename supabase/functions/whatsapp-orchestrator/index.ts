@@ -110,6 +110,35 @@ const evo = {
     try { const r = await safeFetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
     catch { return { healthy: false, latency: Date.now() - s }; }
   },
+  findLastMessage: async (n: string, c: ProviderConfig, remoteJid: string) => {
+    try {
+      const d = await safeJson(await safeFetch(`${c.base_url}/chat/findMessages/${n}`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ where: { key: { remoteJid } }, limit: 1 }),
+        signal: sig()
+      }));
+      const msgs = Array.isArray(d) ? d : d?.messages || d?.data || [];
+      if (msgs.length === 0) return null;
+      const msg = msgs[0];
+      const text = msg?.message?.conversation || msg?.message?.extendedTextMessage?.text || msg?.body || null;
+      const ts = msg?.messageTimestamp
+        ? new Date((typeof msg.messageTimestamp === "number" ? msg.messageTimestamp : parseInt(msg.messageTimestamp)) * 1000).toISOString()
+        : null;
+      return { text, timestamp: ts };
+    } catch (e) {
+      console.error(`[evo.findLastMessage] Error for ${remoteJid}:`, e);
+      return null;
+    }
+  },
+  findWebhook: async (n: string, c: ProviderConfig) => {
+    try {
+      return await safeJson(await safeFetch(`${c.base_url}/webhook/find/${n}`, { headers: authOnly(c), signal: sig() }));
+    } catch (e) {
+      console.error(`[evo.findWebhook] Error:`, e);
+      return null;
+    }
+  },
 };
 
 Deno.serve(async (req) => {
@@ -271,17 +300,11 @@ Deno.serve(async (req) => {
         const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
         console.log(`[sync-groups] Got ${waGroups.length} groups, starting upsert...`);
         let synced = 0;
+        const jidToGroupId: Record<string, string> = {};
         for (const wg of waGroups) {
           const jid = wg.id || wg.jid;
           const name = wg.subject || wg.name || jid;
           if (!jid) continue;
-
-          // Extract last message from Evolution API payload if available
-          const rawLastMsg = wg.lastMessage || wg.last_message;
-          const lastMessageText = rawLastMsg?.message?.conversation || rawLastMsg?.message?.extendedTextMessage?.text || rawLastMsg?.body || (typeof rawLastMsg === "string" ? rawLastMsg : null);
-          const lastMessageAt = rawLastMsg?.messageTimestamp
-            ? new Date((typeof rawLastMsg.messageTimestamp === "number" ? rawLastMsg.messageTimestamp : parseInt(rawLastMsg.messageTimestamp)) * 1000).toISOString()
-            : (lastMessageText ? new Date().toISOString() : null);
 
           const { data: existing } = await svc.from("grupos").select("id, gestor").eq("whatsapp_group_id", jid).maybeSingle();
           if (existing) {
@@ -291,24 +314,55 @@ Deno.serve(async (req) => {
               upd.gestor_id = user.id;
             }
             if (gestorTeamId) upd.team_id = gestorTeamId;
-            if (lastMessageText) upd.last_message = lastMessageText;
-            if (lastMessageAt) upd.last_message_at = lastMessageAt;
             await svc.from("grupos").update(upd).eq("id", existing.id);
+            jidToGroupId[jid] = existing.id;
           } else {
             const { data: byName } = await svc.from("grupos").select("id").eq("nome", name).is("whatsapp_group_id", null).maybeSingle();
             const insertData: any = { whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true };
-            if (lastMessageText) insertData.last_message = lastMessageText;
-            if (lastMessageAt) insertData.last_message_at = lastMessageAt;
             if (byName) {
               await svc.from("grupos").update(insertData).eq("id", byName.id);
+              jidToGroupId[jid] = byName.id;
             } else {
-              await svc.from("grupos").insert({ nome: name, ...insertData, status: "PENDENTE", sla: "DENTRO DO SLA" });
+              const { data: inserted } = await svc.from("grupos").insert({ nome: name, ...insertData, status: "PENDENTE", sla: "DENTRO DO SLA" }).select("id").single();
+              if (inserted) jidToGroupId[jid] = inserted.id;
             }
           }
           synced++;
         }
+
+        // Fetch last message for each group in batches of 5
+        const jids = Object.keys(jidToGroupId);
+        const BATCH_SIZE = 5;
+        let messagesFound = 0;
+        console.log(`[sync-groups] Fetching last messages for ${jids.length} groups in batches of ${BATCH_SIZE}...`);
+        for (let i = 0; i < jids.length; i += BATCH_SIZE) {
+          const batch = jids.slice(i, i + BATCH_SIZE);
+          const results = await Promise.allSettled(
+            batch.map(jid => evo.findLastMessage(inst.instance_name, config, jid))
+          );
+          for (let j = 0; j < batch.length; j++) {
+            const r = results[j];
+            if (r.status === "fulfilled" && r.value?.text) {
+              const groupId = jidToGroupId[batch[j]];
+              const upd: any = { last_message: r.value.text };
+              if (r.value.timestamp) upd.last_message_at = r.value.timestamp;
+              await svc.from("grupos").update(upd).eq("id", groupId);
+              messagesFound++;
+            }
+          }
+        }
+        console.log(`[sync-groups] Messages found: ${messagesFound}/${jids.length}`);
+
+        // Webhook diagnostic
+        try {
+          const webhookInfo = await evo.findWebhook(inst.instance_name, config);
+          console.log(`[sync-groups] Webhook config for ${inst.instance_name}:`, JSON.stringify(webhookInfo));
+        } catch (e) {
+          console.log(`[sync-groups] Could not check webhook config:`, e);
+        }
+
         console.log(`[sync-groups] Done. Synced: ${synced}/${waGroups.length}`);
-        result = { synced, total: waGroups.length };
+        result = { synced, total: waGroups.length, messagesFound };
         break;
       }
       case "check-status": {
