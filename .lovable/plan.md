@@ -1,37 +1,93 @@
 
 
-## Diagnóstico: Sync-Groups falhando com timeout 504
+## Plano: Preenchimento Automático dos Painéis de Monitoramento Após Sync
 
-### Causa Raiz Identificada
-Os logs de analytics mostram que a chamada `sync-groups` retornou **status 504** com **150.157ms de execução** (timeout de 150 segundos). Isso significa que a Edge Function não conseguiu completar a operação dentro do limite de tempo.
+### Situação Atual
 
-A causa mais provável é que o `fetch` para a Evolution API (`http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io/group/fetchAllGroups/robsonn`) está demorando demais ou a conexão não é estabelecida a partir dos servidores da Supabase Edge (Deno). O URL usa **HTTP** (não HTTPS) e um domínio sslip.io apontando para um IP privado/local (`72.60.48.134`), o que pode causar problemas de rede a partir da infraestrutura cloud da Supabase.
+A tabela `grupos` está vazia. Quando o `sync-groups` funcionar (instância conectada), ele cria registros com apenas `nome`, `whatsapp_group_id`, `status=PENDENTE` e `ultima_atividade`. As colunas ficam assim:
 
-Além disso, a instância está com status `connecting` (não `connected`), o que pode significar que a instância WhatsApp não está efetivamente conectada para retornar grupos.
+| Coluna | Fonte Atual | Problema |
+|--------|------------|----------|
+| DATA/HORA | `last_message_at` ou `ultima_atividade` | Funciona parcialmente (sem mensagens, mostra data do sync) |
+| GRUPO | `nome` | Funciona |
+| GESTOR DE TRÁFEGO | `gestor` | Nunca preenchido pelo sync |
+| SQUAD | Hardcoded `"—"` | Nunca resolvido (campo `team_id` existe mas UI ignora) |
+| SATISFAÇÃO | Derivado do score | Funciona (score começa em 50 sem mensagens) |
+| SCORE | `Math.min(100, mensagens/3)` | Começa em 50 (fallback), atualiza com mensagens |
+| STATUS | `status` | Funciona (default PENDENTE) |
+| CONVERSAS | `last_message` | Vazio até chegar mensagem via webhook |
 
-### Plano de Correção
+### Correções Necessárias
 
-#### 1. Adicionar timeout ao fetch da Evolution API
-Envolver todas as chamadas `fetch` do objeto `evo` com `AbortSignal.timeout()` de 25 segundos para evitar que a Edge Function fique presa esperando uma resposta que nunca chega, gerando erros mais claros em vez de timeout 504.
+#### 1. Orchestrator: Enriquecer sync-groups com gestor e team_id
+**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`
 
-#### 2. Adicionar logging no sync-groups
-Incluir `console.log` antes e depois de cada etapa (fetch groups, loop de upsert) para que os logs do Edge Function mostrem onde exatamente a execução trava.
+No `sync-groups`, após criar/atualizar o grupo, buscar o usuário autenticado e associar como gestor. Também aceitar um parâmetro opcional `teamId` para vincular o grupo a um squad.
 
-#### 3. Tratamento de erro mais informativo
-Quando o fetch para a Evolution API falhar (timeout, rede), retornar uma mensagem de erro clara ao frontend indicando que o servidor da Evolution API não está acessível, em vez de apenas "Failed to fetch".
+Alteracoes:
+- Buscar o `user_profiles` do usuario autenticado para obter `full_name` e `team_id`
+- Ao criar novo grupo, popular `gestor` com o nome do usuario, `gestor_id` com o user_id, e `team_id` com o team do usuario
+- Grupos existentes sem gestor tambem recebem o gestor do usuario autenticado
 
-#### 4. Verificação de status da instância
-Antes de tentar sync-groups, verificar se a instância está com status `connected`. Se estiver `connecting` ou `disconnected`, retornar erro imediato informando que a instância precisa estar conectada.
+#### 2. UI: Resolver coluna SQUAD pelo team_id
+**Arquivos:** `src/pages/Monitoramento.tsx`, `src/pages/Hub.tsx`, `src/pages/Squads.tsx`
+
+Todas as 3 paginas tem `squad: "—"` hardcoded. Corrigir para:
+- Importar `useTeams` e criar um mapa `teamId -> teamName`
+- No mapeamento de `dbGrupos`, resolver `squad` via `teams.find(t => t.id === g.team_id)?.name ?? "—"`
+
+#### 3. Webhook: Garantir atualização correta do contador de mensagens
+**Arquivo:** `supabase/functions/whatsapp-webhook/index.ts`
+
+O webhook ja atualiza `last_message`, `last_message_at` e incrementa `mensagens`. Porem, o incremento usa duas queries separadas (select + update) que pode ter race condition. Usar uma unica operacao RPC ou consolidar.
+
+Alem disso, o webhook precisa tambem atualizar o `status` do grupo automaticamente baseado na atividade (ex: se mensagem recebida e nao respondida em X tempo, marcar como CRITICO).
+
+#### 4. Realtime: Ja funciona
+O hook `useGroupConversations` ja escuta mudancas em `grupos` e `grupo_messages` via Supabase Realtime, invalidando a query. Nenhuma alteração necessaria.
 
 ### Detalhes Técnicos
 
-**Arquivo afetado:** `supabase/functions/whatsapp-orchestrator/index.ts`
+**Mudanca no sync-groups (orchestrator):**
+```
+// Antes do loop de upsert:
+const { data: profile } = await svc.from("user_profiles")
+  .select("full_name, team_id")
+  .eq("user_id", user.id)
+  .maybeSingle();
+const gestorName = profile?.full_name ?? null;
+const gestorTeamId = profile?.team_id ?? null;
 
-**Mudanças específicas:**
-- Adicionar `signal: AbortSignal.timeout(25000)` em todas as chamadas `fetch` do objeto `evo`
-- No case `sync-groups`, verificar `inst.status === "connected"` antes de prosseguir
-- Adicionar `console.log` para debugging: antes do fetch, após receber grupos, durante o loop
-- Melhorar a mensagem de erro do catch para diferenciar timeout de outros erros
+// No insert de novo grupo:
+await svc.from("grupos").insert({
+  nome: name,
+  whatsapp_group_id: jid,
+  gestor: gestorName,
+  gestor_id: user.id,
+  team_id: gestorTeamId,
+  status: "PENDENTE",
+  sla: "DENTRO DO SLA",
+  ultima_atividade: new Date().toISOString()
+});
+```
 
-**Nota importante:** O URL base do provider usa HTTP e um domínio sslip.io com IP (`72.60.48.134`). Se este IP não for acessível publicamente (ex: rede interna ou VPN), a Edge Function da Supabase nunca conseguirá se conectar. Nesse caso, seria necessário expor a Evolution API via HTTPS com um domínio público, ou usar um túnel/proxy.
+**Mudanca nas 3 paginas (squad resolution):**
+```typescript
+const { data: teams } = useTeams();
+const teamMap = useMemo(() => {
+  const m: Record<string, string> = {};
+  teams?.forEach(t => { m[t.id] = t.name; });
+  return m;
+}, [teams]);
+
+// No mapeamento:
+squad: g.team_id ? teamMap[g.team_id] ?? "—" : "—",
+```
+
+### Resumo das Alteracoes
+
+1. **`whatsapp-orchestrator/index.ts`** - sync-groups popula `gestor`, `gestor_id`, `team_id` automaticamente
+2. **`Monitoramento.tsx`** - resolve SQUAD via `useTeams` + `teamMap`
+3. **`Hub.tsx`** - resolve SQUAD via `useTeams` + `teamMap`
+4. **`Squads.tsx`** - resolve SQUAD via `useTeams` + `teamMap` (ja tem teams carregado)
 
