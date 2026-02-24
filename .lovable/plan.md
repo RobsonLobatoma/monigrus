@@ -1,35 +1,51 @@
 
 
-## Problema
+## Diagnóstico
 
-Existem 93 grupos na tabela `grupos` com `instance_id = NULL` e `ativo = true`. Esses grupos foram sincronizados antes da coluna `instance_id` ser adicionada. O `delete-instance` tenta desativar grupos com `.eq("instance_id", instanceId)`, mas como todos têm `instance_id = NULL`, nenhum é afetado.
+O erro é claro nos logs:
 
-## Plano
-
-### 1. Limpeza imediata dos dados orfãos (SQL UPDATE)
-Executar um UPDATE para marcar como `ativo = false` todos os grupos que têm `instance_id IS NULL`. Esses são dados orfãos que não pertencem a nenhuma instância ativa.
-
-```sql
-UPDATE grupos SET ativo = false WHERE instance_id IS NULL;
+```
+invalid peer certificate: UnknownIssuer
 ```
 
-### 2. Proteção no `useGrupos` hook
-Adicionar filtro adicional no hook `useGrupos` para garantir que apenas grupos com `instance_id` preenchido (vinculados a uma instância existente) sejam retornados. Isso previne que dados orfãos apareçam no Hub ou no Monitoramento, mesmo que `ativo` esteja `true` por engano.
+A Evolution API está configurada com HTTPS (`https://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io`) mas usa um certificado SSL auto-assinado que o Deno (runtime das Edge Functions) rejeita. Isso não é um bug de código — é uma incompatibilidade de TLS.
 
-**Arquivo:** `src/hooks/useGrupos.ts`
-- Adicionar `.not("instance_id", "is", null)` na query
+O Deno, por segurança, não aceita certificados de emissores desconhecidos. Não há API estável no Deno para desabilitar verificação TLS em `fetch()`.
 
-### 3. Proteção no `delete-instance` do orchestrator
-Além de desativar por `instance_id`, também verificar se a instância que está sendo deletada tem grupos sem `instance_id` mas com o mesmo `whatsapp_group_id`. Isso cobre cenários de dados migrados.
+## Solução
 
-**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`  
-- Manter a lógica existente (já correta para dados novos)
+Modificar o orchestrator para **auto-converter HTTPS para HTTP** na base_url quando a URL usa sslip.io ou IPs diretos (indicativo de ambiente sem certificado válido). Adicionalmente, criar um wrapper de fetch que tenta HTTPS primeiro e, se falhar com erro de certificado, faz fallback para HTTP.
 
----
+## Plano de Implementação
 
-### Resultado esperado
-- Os 93 grupos orfãos desaparecem imediatamente dos painéis (Global e Pessoal)
-- Futuras sincronizações gravam `instance_id` corretamente
-- Futuras remoções de instância limpam os grupos associados
-- O hook `useGrupos` nunca retorna grupos sem instância vinculada
+### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
+
+1. Criar uma função `safeFetch` que envolve `fetch` com lógica de fallback:
+   - Tenta a requisição normalmente
+   - Se falhar com erro contendo "invalid peer certificate", "UnknownIssuer", ou "certificate" → refaz a requisição trocando `https://` por `http://` na URL
+
+2. Substituir todos os `fetch(...)` dentro do objeto `evo` por `safeFetch(...)` — isso cobre todas as chamadas à Evolution API (createInstance, deleteInstance, connect, disconnect, sendMessage, sendMedia, getGroups, setWebhook, connectionState, healthCheck)
+
+### Detalhe técnico
+
+```text
+safeFetch(url, options):
+  try:
+    return fetch(url, options)
+  catch (err):
+    if err.message includes "certificate" or "UnknownIssuer":
+      httpUrl = url.replace("https://", "http://")
+      return fetch(httpUrl, options)
+    throw err
+```
+
+Isso garante que:
+- URLs com HTTPS válido continuam funcionando normalmente
+- URLs com certificados auto-assinados (como sslip.io) fazem fallback automático para HTTP
+- Nenhuma alteração de configuração necessária pelo usuário
+
+### Arquivos modificados
+| Arquivo | Mudança |
+|---------|---------|
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Adicionar `safeFetch` wrapper + substituir `fetch` por `safeFetch` em todas as chamadas do objeto `evo` |
 
