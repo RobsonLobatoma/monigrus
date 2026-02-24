@@ -24,6 +24,16 @@ interface WhatsAppProvider {
 }
 
 // ── Evolution Provider ──────────────────────────────────────────────
+// ── Safe JSON parser ────────────────────────────────────────────────
+async function safeJson(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`API returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`);
+  }
+}
+
 const evolutionProvider: WhatsAppProvider = {
   async createInstance(instanceName, config) {
     const res = await fetch(`${config.base_url}/instance/create`, {
@@ -31,7 +41,7 @@ const evolutionProvider: WhatsAppProvider = {
       headers: { "Content-Type": "application/json", apikey: config.api_key },
       body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deleteInstance(instanceName, config) {
@@ -39,7 +49,7 @@ const evolutionProvider: WhatsAppProvider = {
       method: "DELETE",
       headers: { "Content-Type": "application/json", apikey: config.api_key },
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async connect(instanceName, config) {
@@ -47,7 +57,7 @@ const evolutionProvider: WhatsAppProvider = {
       method: "GET",
       headers: { apikey: config.api_key },
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     return { qrCode: data?.base64 || data?.qrcode?.base64, status: "connecting" };
   },
 
@@ -56,7 +66,7 @@ const evolutionProvider: WhatsAppProvider = {
       method: "DELETE",
       headers: { apikey: config.api_key },
     });
-    await res.json();
+    await safeJson(res);
     return { success: true };
   },
 
@@ -66,7 +76,7 @@ const evolutionProvider: WhatsAppProvider = {
       headers: { "Content-Type": "application/json", apikey: config.api_key },
       body: JSON.stringify({ number: payload.to, text: payload.text }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     return { messageId: data?.key?.id, status: "sent" };
   },
 
@@ -81,7 +91,7 @@ const evolutionProvider: WhatsAppProvider = {
         caption: payload.caption || "",
       }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     return { messageId: data?.key?.id, status: "sent" };
   },
 
@@ -90,7 +100,7 @@ const evolutionProvider: WhatsAppProvider = {
       method: "GET",
       headers: { apikey: config.api_key },
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     return { groups: Array.isArray(data) ? data : [] };
   },
 
@@ -101,7 +111,7 @@ const evolutionProvider: WhatsAppProvider = {
         method: "GET",
         headers: { apikey: config.api_key },
       });
-      await res.json();
+      await safeJson(res);
       return { healthy: res.ok, latency: Date.now() - start };
     } catch {
       return { healthy: false, latency: Date.now() - start };
