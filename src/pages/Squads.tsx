@@ -490,7 +490,7 @@ const Squads = () => {
                       <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
                       <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
                       <th style={thStyle}>STATUS</th>
-                      <th style={thStyle}>DESCRIÇÃO</th>
+                      <th style={thStyle}>CONVERSAS</th>
                     </tr>
                   </thead>
                   <tbody>
