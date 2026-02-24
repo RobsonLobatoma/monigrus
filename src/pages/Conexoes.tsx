@@ -86,12 +86,13 @@ export default function Conexoes() {
   useEffect(() => () => stopPolling(), [stopPolling]);
 
   // Auto-check status for instances stuck in "connecting" on page load
-  const autoCheckedRef = useRef(false);
+  const autoCheckedIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (autoCheckedRef.current || !instances?.length) return;
-    autoCheckedRef.current = true;
+    if (!instances?.length) return;
     const connectingInstances = instances.filter((i: any) => i.status === "connecting");
     connectingInstances.forEach((inst: any) => {
+      if (autoCheckedIdsRef.current.has(inst.id)) return;
+      autoCheckedIdsRef.current.add(inst.id);
       checkStatus.mutate(inst.id, {
         onSuccess: (data: any) => {
           if (data?.justConnected || data?.status === "connected") {
@@ -100,8 +101,14 @@ export default function Conexoes() {
               onSuccess: (syncData: any) => {
                 toast({ title: "Grupos sincronizados", description: `${syncData?.synced || 0} grupos mapeados.` });
               },
+              onError: (err: any) => {
+                console.error("Auto-sync failed:", err.message);
+              },
             });
           }
+        },
+        onError: (err: any) => {
+          console.error("Auto-check status failed:", err.message);
         },
       });
     });
@@ -280,7 +287,14 @@ export default function Conexoes() {
                             <Button size="icon" variant="ghost" title="Sincronizar Grupos" onClick={() => handleSyncGroups(inst.id)} disabled={syncGroups.isPending}>
                               <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
                             </Button>
-                            <Button size="icon" variant="ghost" title="Remover" onClick={() => deleteInstance.mutate(inst.id, { onSuccess: () => toast({ title: "Instância removida" }) })} disabled={deleteInstance.isPending}>
+                            <Button size="icon" variant="ghost" title="Remover" onClick={() => {
+                              stopPolling();
+                              autoCheckedIdsRef.current.clear();
+                              deleteInstance.mutate(inst.id, {
+                                onSuccess: () => toast({ title: "Instância removida" }),
+                                onError: (e: any) => toast({ title: "Erro ao remover", description: e.message, variant: "destructive" }),
+                              });
+                            }} disabled={deleteInstance.isPending}>
                               <Trash2 className="w-4 h-4 text-destructive" />
                             </Button>
                           </div>
