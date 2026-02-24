@@ -2,6 +2,7 @@ project_id = "nmmbjptgrvsjqeytmxmw"
 
 [functions.whatsapp-orchestrator]
 verify_jwt = false
+max_execution_time = 150
 
 [functions.whatsapp-webhook]
 verify_jwt = false
