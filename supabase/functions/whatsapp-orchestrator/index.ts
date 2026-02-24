@@ -2,475 +2,193 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Provider Interface ──────────────────────────────────────────────
-interface ProviderConfig {
-  base_url: string;
-  api_key: string;
-}
+interface ProviderConfig { base_url: string; api_key: string; }
 
-interface WhatsAppProvider {
-  createInstance(instanceName: string, config: ProviderConfig): Promise<any>;
-  deleteInstance(instanceName: string, config: ProviderConfig): Promise<any>;
-  connect(instanceName: string, config: ProviderConfig): Promise<{ qrCode?: string; status: string }>;
-  disconnect(instanceName: string, config: ProviderConfig): Promise<{ success: boolean }>;
-  sendMessage(instanceName: string, config: ProviderConfig, payload: any): Promise<{ messageId?: string; status: string }>;
-  sendMedia(instanceName: string, config: ProviderConfig, payload: any): Promise<{ messageId?: string; status: string }>;
-  getGroups(instanceName: string, config: ProviderConfig): Promise<{ groups: any[] }>;
-  healthCheck(config: ProviderConfig): Promise<{ healthy: boolean; latency: number }>;
-}
-
-// ── Evolution Provider ──────────────────────────────────────────────
-// ── Safe JSON parser ────────────────────────────────────────────────
 async function safeJson(res: Response): Promise<any> {
   const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`API returned non-JSON (status ${res.status}): ${text.slice(0, 200)}`);
-  }
+  try { return JSON.parse(text); } catch { throw new Error(`Non-JSON (${res.status}): ${text.slice(0, 200)}`); }
 }
 
-const evolutionProvider: WhatsAppProvider = {
-  async createInstance(instanceName, config) {
-    const res = await fetch(`${config.base_url}/instance/create`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: config.api_key },
-      body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }),
-    });
-    return safeJson(res);
-  },
+const headers = (config: ProviderConfig) => ({ "Content-Type": "application/json", apikey: config.api_key });
+const authOnly = (config: ProviderConfig) => ({ apikey: config.api_key });
 
-  async deleteInstance(instanceName, config) {
-    const res = await fetch(`${config.base_url}/instance/delete/${instanceName}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json", apikey: config.api_key },
-    });
-    return safeJson(res);
-  },
-
-  async connect(instanceName, config) {
-    const res = await fetch(`${config.base_url}/instance/connect/${instanceName}`, {
-      method: "GET",
-      headers: { apikey: config.api_key },
-    });
-    const data = await safeJson(res);
-    return { qrCode: data?.base64 || data?.qrcode?.base64, status: "connecting" };
-  },
-
-  async disconnect(instanceName, config) {
-    const res = await fetch(`${config.base_url}/instance/logout/${instanceName}`, {
-      method: "DELETE",
-      headers: { apikey: config.api_key },
-    });
-    await safeJson(res);
-    return { success: true };
-  },
-
-  async sendMessage(instanceName, config, payload) {
-    const res = await fetch(`${config.base_url}/message/sendText/${instanceName}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: config.api_key },
-      body: JSON.stringify({ number: payload.to, text: payload.text }),
-    });
-    const data = await safeJson(res);
-    return { messageId: data?.key?.id, status: "sent" };
-  },
-
-  async sendMedia(instanceName, config, payload) {
-    const res = await fetch(`${config.base_url}/message/sendMedia/${instanceName}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: config.api_key },
-      body: JSON.stringify({
-        number: payload.to,
-        mediatype: payload.mediaType || "image",
-        media: payload.mediaUrl,
-        caption: payload.caption || "",
-      }),
-    });
-    const data = await safeJson(res);
-    return { messageId: data?.key?.id, status: "sent" };
-  },
-
-  async getGroups(instanceName, config) {
-    const res = await fetch(`${config.base_url}/group/fetchAllGroups/${instanceName}?getParticipants=false`, {
-      method: "GET",
-      headers: { apikey: config.api_key },
-    });
-    const data = await safeJson(res);
-    return { groups: Array.isArray(data) ? data : [] };
-  },
-
-  async healthCheck(config) {
-    const start = Date.now();
-    try {
-      const res = await fetch(`${config.base_url}/instance/fetchInstances`, {
-        method: "GET",
-        headers: { apikey: config.api_key },
-      });
-      await safeJson(res);
-      return { healthy: res.ok, latency: Date.now() - start };
-    } catch {
-      return { healthy: false, latency: Date.now() - start };
-    }
-  },
-};
-
-// ── Provider Registry ───────────────────────────────────────────────
-const providers: Record<string, WhatsAppProvider> = {
-  evolution: evolutionProvider,
-};
-
-// ── Retry Helper ────────────────────────────────────────────────────
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
-  let lastError: any;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      if (i < maxRetries - 1) await new Promise((r) => setTimeout(r, Math.pow(2, i) * 500));
-    }
+async function withRetry<T>(fn: () => Promise<T>, max = 3): Promise<T> {
+  let err: any;
+  for (let i = 0; i < max; i++) {
+    try { return await fn(); } catch (e) { err = e; if (i < max - 1) await new Promise(r => setTimeout(r, 2 ** i * 500)); }
   }
-  throw lastError;
+  throw err;
 }
 
-// ── Main Handler ────────────────────────────────────────────────────
+const evo = {
+  createInstance: async (n: string, c: ProviderConfig) => safeJson(await fetch(`${c.base_url}/instance/create`, { method: "POST", headers: headers(c), body: JSON.stringify({ instanceName: n, integration: "WHATSAPP-BAILEYS", qrcode: true }) })),
+  deleteInstance: async (n: string, c: ProviderConfig) => safeJson(await fetch(`${c.base_url}/instance/delete/${n}`, { method: "DELETE", headers: headers(c) })),
+  connect: async (n: string, c: ProviderConfig) => { const d = await safeJson(await fetch(`${c.base_url}/instance/connect/${n}`, { headers: authOnly(c) })); return { qrCode: d?.base64 || d?.qrcode?.base64, status: "connecting" }; },
+  disconnect: async (n: string, c: ProviderConfig) => { await safeJson(await fetch(`${c.base_url}/instance/logout/${n}`, { method: "DELETE", headers: authOnly(c) })); return { success: true }; },
+  sendMessage: async (n: string, c: ProviderConfig, p: any) => { const d = await safeJson(await fetch(`${c.base_url}/message/sendText/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, text: p.text }) })); return { messageId: d?.key?.id, status: "sent" }; },
+  sendMedia: async (n: string, c: ProviderConfig, p: any) => { const d = await safeJson(await fetch(`${c.base_url}/message/sendMedia/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, mediatype: p.mediaType || "image", media: p.mediaUrl, caption: p.caption || "" }) })); return { messageId: d?.key?.id, status: "sent" }; },
+  getGroups: async (n: string, c: ProviderConfig) => { const d = await safeJson(await fetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c) })); return { groups: Array.isArray(d) ? d : [] }; },
+  healthCheck: async (c: ProviderConfig) => { const s = Date.now(); try { const r = await fetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c) }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; } catch { return { healthy: false, latency: Date.now() - s }; } },
+};
+
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
+    if (!authHeader?.startsWith("Bearer ")) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const { data: { user }, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
-    }
+    if (userErr || !user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
 
     const body = await req.json();
     const { action, ...params } = body;
 
-    // ── Resolve provider config ──
-    const resolveProviderConfig = async (providerId?: string) => {
-      let providerRow: any;
-      if (providerId) {
-        const { data } = await supabase.from("whatsapp_providers").select("*").eq("id", providerId).single();
-        providerRow = data;
-      } else {
-        const { data } = await supabase.from("whatsapp_providers").select("*").eq("is_default", true).eq("is_active", true).single();
-        providerRow = data;
-      }
-      if (!providerRow) throw new Error("No active provider found");
-
-      const rawBaseUrl = providerRow.config?.base_url;
-      if (!rawBaseUrl) throw new Error("Provider base_url is not configured. Please set it in Conexões > Providers.");
-      const baseUrl = rawBaseUrl.replace(/\/+$/, ""); // strip trailing slashes
-
-      const secretName = providerRow.config?.api_key_secret_name || "EVOLUTION_API_KEY";
-      const apiKey = Deno.env.get(secretName) || "";
-      const adapter = providers[providerRow.name];
-      if (!adapter) throw new Error(`Provider adapter '${providerRow.name}' not found`);
-
-      return {
-        adapter,
-        config: { base_url: baseUrl, api_key: apiKey } as ProviderConfig,
-        providerRow,
-      };
+    const resolveProvider = async (providerId?: string) => {
+      const { data: row } = providerId
+        ? await supabase.from("whatsapp_providers").select("*").eq("id", providerId).single()
+        : await supabase.from("whatsapp_providers").select("*").eq("is_default", true).eq("is_active", true).single();
+      if (!row) throw new Error("No active provider");
+      const baseUrl = (row.config as any)?.base_url?.replace(/\/+$/, "");
+      if (!baseUrl) throw new Error("Provider base_url not configured");
+      const apiKey = Deno.env.get((row.config as any)?.api_key_secret_name || "EVOLUTION_API_KEY") || "";
+      return { config: { base_url: baseUrl, api_key: apiKey } as ProviderConfig, row };
     };
 
-    // ── Service client for writes ──
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    const svc = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    const getInst = async (id: string) => {
+      const { data } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", id).single();
+      if (!data) throw new Error("Instance not found");
+      return data;
+    };
 
     let result: any;
 
     switch (action) {
-      // ── Provider actions ──
-      case "list-providers": {
-        const { data } = await supabase.from("whatsapp_providers").select("*").order("created_at");
-        result = data;
-        break;
-      }
-      case "set-active-provider": {
-        const { providerId, isActive } = params;
-        const { data } = await serviceClient
-          .from("whatsapp_providers")
-          .update({ is_active: isActive })
-          .eq("id", providerId)
-          .select()
-          .single();
-        result = data;
-        break;
-      }
-      case "update-provider-config": {
-        const { providerId, config: newConfig } = params;
-        const { data } = await serviceClient
-          .from("whatsapp_providers")
-          .update({ config: newConfig })
-          .eq("id", providerId)
-          .select()
-          .single();
-        result = data;
-        break;
-      }
-
-      // ── Instance actions ──
-      case "get-instances": {
-        const { data } = await supabase
-          .from("whatsapp_instances")
-          .select("*, whatsapp_providers(name, display_name)")
-          .order("created_at");
-        result = data;
-        break;
-      }
+      case "list-providers": { const { data } = await supabase.from("whatsapp_providers").select("*").order("created_at"); result = data; break; }
+      case "set-active-provider": { const { data } = await svc.from("whatsapp_providers").update({ is_active: params.isActive }).eq("id", params.providerId).select().single(); result = data; break; }
+      case "update-provider-config": { const { data } = await svc.from("whatsapp_providers").update({ config: params.config }).eq("id", params.providerId).select().single(); result = data; break; }
+      case "get-instances": { const { data } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(name, display_name)").order("created_at"); result = data; break; }
       case "create-instance": {
         const { instanceName, providerId } = params;
-        const { adapter, config, providerRow } = await resolveProviderConfig(providerId);
-        const apiResult = await withRetry(() => adapter.createInstance(instanceName, config));
-
-        // Validate API response before saving to DB
-        const errMsg = apiResult?.error || apiResult?.message;
-        const msgArr = apiResult?.message;
-        const isAlreadyInUse = Array.isArray(msgArr)
-          ? msgArr.some((m: string) => typeof m === "string" && m.includes("already in use"))
-          : typeof msgArr === "string" && msgArr.includes("already in use");
-
-        if (!isAlreadyInUse && (apiResult?.status === 404 || apiResult?.status === 403 || errMsg)) {
-          throw new Error(`Evolution API error: ${errMsg || "Unknown"} - ${JSON.stringify(apiResult?.response || apiResult?.message || {})}`);
+        const { config, row } = await resolveProvider(providerId);
+        const apiRes = await withRetry(() => evo.createInstance(instanceName, config));
+        const msg = apiRes?.message;
+        const inUse = Array.isArray(msg) ? msg.some((m: string) => typeof m === "string" && m.includes("already in use")) : typeof msg === "string" && msg.includes("already in use");
+        if (!inUse && (apiRes?.status === 404 || apiRes?.status === 403 || apiRes?.error || apiRes?.message)) {
+          const isErr = apiRes?.error || (typeof msg === "string" && !msg.includes("already in use"));
+          if (isErr) throw new Error(`API error: ${JSON.stringify(apiRes)}`);
         }
-
-        const { data } = await serviceClient
-          .from("whatsapp_instances")
-          .insert({ instance_name: instanceName, provider_id: providerRow.id, status: "disconnected" })
-          .select()
-          .single();
-        result = { instance: data, apiResult };
+        const { data } = await svc.from("whatsapp_instances").insert({ instance_name: instanceName, provider_id: row.id, status: "disconnected" }).select().single();
+        result = { instance: data, apiResult: apiRes };
         break;
       }
       case "delete-instance": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (inst) {
-          const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-          try { await adapter.deleteInstance(inst.instance_name, config); } catch {}
-          await serviceClient.from("whatsapp_instances").delete().eq("id", instanceId);
-        }
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        try { await evo.deleteInstance(inst.instance_name, config); } catch {}
+        await svc.from("whatsapp_instances").delete().eq("id", params.instanceId);
         result = { success: true };
         break;
       }
       case "connect-instance": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-        const connectResult = await withRetry(() => adapter.connect(inst.instance_name, config));
-
-        await serviceClient
-          .from("whatsapp_instances")
-          .update({ status: "connecting", qr_code: connectResult.qrCode || null })
-          .eq("id", instanceId);
-        result = connectResult;
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const r = await withRetry(() => evo.connect(inst.instance_name, config));
+        await svc.from("whatsapp_instances").update({ status: "connecting", qr_code: r.qrCode || null }).eq("id", params.instanceId);
+        result = r;
         break;
       }
       case "disconnect-instance": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-        await adapter.disconnect(inst.instance_name, config);
-
-        await serviceClient
-          .from("whatsapp_instances")
-          .update({ status: "disconnected", qr_code: null })
-          .eq("id", instanceId);
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        await evo.disconnect(inst.instance_name, config);
+        await svc.from("whatsapp_instances").update({ status: "disconnected", qr_code: null }).eq("id", params.instanceId);
         result = { success: true };
         break;
       }
       case "get-qr-code": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-        const connectResult = await adapter.connect(inst.instance_name, config);
-
-        if (connectResult.qrCode) {
-          await serviceClient.from("whatsapp_instances").update({ qr_code: connectResult.qrCode }).eq("id", instanceId);
-        }
-        result = connectResult;
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const r = await evo.connect(inst.instance_name, config);
+        if (r.qrCode) await svc.from("whatsapp_instances").update({ qr_code: r.qrCode }).eq("id", params.instanceId);
+        result = r;
         break;
       }
-
-      // ── Message actions ──
       case "send-message": {
-        const { instanceId, to, text } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-
-        const start = Date.now();
-        const msgResult = await withRetry(() => adapter.sendMessage(inst.instance_name, config, { to, text }));
-        const latency = Date.now() - start;
-
-        await serviceClient.from("whatsapp_message_log").insert({
-          instance_id: instanceId,
-          direction: "outbound",
-          message_type: "text",
-          payload: { to, text },
-          status: msgResult.status,
-          latency_ms: latency,
-        });
-        result = msgResult;
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const s = Date.now();
+        const r = await withRetry(() => evo.sendMessage(inst.instance_name, config, { to: params.to, text: params.text }));
+        await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "text", payload: { to: params.to, text: params.text }, status: r.status, latency_ms: Date.now() - s });
+        result = r;
         break;
       }
       case "send-media": {
-        const { instanceId, to, mediaUrl, mediaType, caption } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-
-        const start = Date.now();
-        const msgResult = await withRetry(() => adapter.sendMedia(inst.instance_name, config, { to, mediaUrl, mediaType, caption }));
-        const latency = Date.now() - start;
-
-        await serviceClient.from("whatsapp_message_log").insert({
-          instance_id: instanceId,
-          direction: "outbound",
-          message_type: "media",
-          payload: { to, mediaUrl, mediaType, caption },
-          status: msgResult.status,
-          latency_ms: latency,
-        });
-        result = msgResult;
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const s = Date.now();
+        const r = await withRetry(() => evo.sendMedia(inst.instance_name, config, params));
+        await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "media", payload: params, status: r.status, latency_ms: Date.now() - s });
+        result = r;
         break;
       }
-
-      // ── Group actions ──
       case "get-groups": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-        result = await adapter.getGroups(inst.instance_name, config);
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        result = await evo.getGroups(inst.instance_name, config);
         break;
       }
-
       case "sync-groups": {
-        const { instanceId } = params;
-        const { data: inst } = await supabase.from("whatsapp_instances").select("*, whatsapp_providers(*)").eq("id", instanceId).single();
-        if (!inst) throw new Error("Instance not found");
-        const { adapter, config } = await resolveProviderConfig(inst.provider_id);
-        const { groups: waGroups } = await adapter.getGroups(inst.instance_name, config);
-
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
         let synced = 0;
         for (const wg of waGroups) {
           const jid = wg.id || wg.jid;
           const name = wg.subject || wg.name || jid;
           if (!jid) continue;
-
-          // Try to find existing grupo by whatsapp_group_id
-          const { data: existing } = await serviceClient
-            .from("grupos")
-            .select("id")
-            .eq("whatsapp_group_id", jid)
-            .maybeSingle();
-
+          const { data: existing } = await svc.from("grupos").select("id").eq("whatsapp_group_id", jid).maybeSingle();
           if (existing) {
-            await serviceClient.from("grupos").update({
-              nome: name,
-              ultima_atividade: new Date().toISOString(),
-            }).eq("id", existing.id);
+            await svc.from("grupos").update({ nome: name, ultima_atividade: new Date().toISOString() }).eq("id", existing.id);
           } else {
-            // Try to match by name
-            const { data: byName } = await serviceClient
-              .from("grupos")
-              .select("id")
-              .eq("nome", name)
-              .is("whatsapp_group_id", null)
-              .maybeSingle();
-
-            if (byName) {
-              await serviceClient.from("grupos").update({
-                whatsapp_group_id: jid,
-                ultima_atividade: new Date().toISOString(),
-              }).eq("id", byName.id);
-            } else {
-              await serviceClient.from("grupos").insert({
-                nome: name,
-                whatsapp_group_id: jid,
-                status: "PENDENTE",
-                sla: "DENTRO DO SLA",
-                ultima_atividade: new Date().toISOString(),
-              });
-            }
+            const { data: byName } = await svc.from("grupos").select("id").eq("nome", name).is("whatsapp_group_id", null).maybeSingle();
+            if (byName) { await svc.from("grupos").update({ whatsapp_group_id: jid, ultima_atividade: new Date().toISOString() }).eq("id", byName.id); }
+            else { await svc.from("grupos").insert({ nome: name, whatsapp_group_id: jid, status: "PENDENTE", sla: "DENTRO DO SLA", ultima_atividade: new Date().toISOString() }); }
           }
           synced++;
         }
         result = { synced, total: waGroups.length };
         break;
       }
-
-      // ── Health check ──
       case "health-check": {
-        const { providerId } = params;
-        const { adapter, config } = await resolveProviderConfig(providerId);
-        const hc = await adapter.healthCheck(config);
-
-        if (providerId) {
-          await serviceClient.from("whatsapp_providers").update({ updated_at: new Date().toISOString() }).eq("id", providerId);
-        }
-        result = hc;
+        const { config } = await resolveProvider(params.providerId);
+        result = await evo.healthCheck(config);
+        if (params.providerId) await svc.from("whatsapp_providers").update({ updated_at: new Date().toISOString() }).eq("id", params.providerId);
         break;
       }
-
-      // ── Logs ──
       case "get-message-log": {
-        const { instanceId, limit: lim } = params;
-        let query = supabase.from("whatsapp_message_log").select("*").order("created_at", { ascending: false }).limit(lim || 100);
-        if (instanceId) query = query.eq("instance_id", instanceId);
-        const { data } = await query;
-        result = data;
-        break;
+        let q = supabase.from("whatsapp_message_log").select("*").order("created_at", { ascending: false }).limit(params.limit || 100);
+        if (params.instanceId) q = q.eq("instance_id", params.instanceId);
+        const { data } = await q; result = data; break;
       }
       case "get-webhooks-log": {
-        const { instanceId, limit: lim } = params;
-        let query = supabase.from("whatsapp_webhooks_log").select("*").order("created_at", { ascending: false }).limit(lim || 100);
-        if (instanceId) query = query.eq("instance_id", instanceId);
-        const { data } = await query;
-        result = data;
-        break;
+        let q = supabase.from("whatsapp_webhooks_log").select("*").order("created_at", { ascending: false }).limit(params.limit || 100);
+        if (params.instanceId) q = q.eq("instance_id", params.instanceId);
+        const { data } = await q; result = data; break;
       }
-
       default:
-        return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(JSON.stringify({ data: result }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ data: result }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: any) {
     console.error("Orchestrator error:", err);
-    return new Response(JSON.stringify({ error: err.message || "Internal error" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: err.message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
