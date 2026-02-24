@@ -7,31 +7,49 @@ const corsHeaders = {
 
 interface ProviderConfig { base_url: string; api_key: string; }
 
+const FETCH_TIMEOUT = 25000;
+
 async function safeJson(res: Response): Promise<any> {
   const text = await res.text();
   try { return JSON.parse(text); } catch { throw new Error(`Non-JSON (${res.status}): ${text.slice(0, 200)}`); }
 }
 
-const headers = (config: ProviderConfig) => ({ "Content-Type": "application/json", apikey: config.api_key });
-const authOnly = (config: ProviderConfig) => ({ apikey: config.api_key });
-
-async function withRetry<T>(fn: () => Promise<T>, max = 3): Promise<T> {
-  let err: any;
-  for (let i = 0; i < max; i++) {
-    try { return await fn(); } catch (e) { err = e; if (i < max - 1) await new Promise(r => setTimeout(r, 2 ** i * 500)); }
-  }
-  throw err;
-}
+const headers = (c: ProviderConfig) => ({ "Content-Type": "application/json", apikey: c.api_key });
+const authOnly = (c: ProviderConfig) => ({ apikey: c.api_key });
+const sig = () => AbortSignal.timeout(FETCH_TIMEOUT);
 
 const evo = {
-  createInstance: async (n: string, c: ProviderConfig) => safeJson(await fetch(`${c.base_url}/instance/create`, { method: "POST", headers: headers(c), body: JSON.stringify({ instanceName: n, integration: "WHATSAPP-BAILEYS", qrcode: true }) })),
-  deleteInstance: async (n: string, c: ProviderConfig) => safeJson(await fetch(`${c.base_url}/instance/delete/${n}`, { method: "DELETE", headers: headers(c) })),
-  connect: async (n: string, c: ProviderConfig) => { const d = await safeJson(await fetch(`${c.base_url}/instance/connect/${n}`, { headers: authOnly(c) })); return { qrCode: d?.base64 || d?.qrcode?.base64, status: "connecting" }; },
-  disconnect: async (n: string, c: ProviderConfig) => { await safeJson(await fetch(`${c.base_url}/instance/logout/${n}`, { method: "DELETE", headers: authOnly(c) })); return { success: true }; },
-  sendMessage: async (n: string, c: ProviderConfig, p: any) => { const d = await safeJson(await fetch(`${c.base_url}/message/sendText/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, text: p.text }) })); return { messageId: d?.key?.id, status: "sent" }; },
-  sendMedia: async (n: string, c: ProviderConfig, p: any) => { const d = await safeJson(await fetch(`${c.base_url}/message/sendMedia/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, mediatype: p.mediaType || "image", media: p.mediaUrl, caption: p.caption || "" }) })); return { messageId: d?.key?.id, status: "sent" }; },
-  getGroups: async (n: string, c: ProviderConfig) => { const d = await safeJson(await fetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c) })); return { groups: Array.isArray(d) ? d : [] }; },
-  healthCheck: async (c: ProviderConfig) => { const s = Date.now(); try { const r = await fetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c) }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; } catch { return { healthy: false, latency: Date.now() - s }; } },
+  createInstance: async (n: string, c: ProviderConfig) =>
+    safeJson(await fetch(`${c.base_url}/instance/create`, { method: "POST", headers: headers(c), body: JSON.stringify({ instanceName: n, integration: "WHATSAPP-BAILEYS", qrcode: true }), signal: sig() })),
+  deleteInstance: async (n: string, c: ProviderConfig) =>
+    safeJson(await fetch(`${c.base_url}/instance/delete/${n}`, { method: "DELETE", headers: headers(c), signal: sig() })),
+  connect: async (n: string, c: ProviderConfig) => {
+    const d = await safeJson(await fetch(`${c.base_url}/instance/connect/${n}`, { headers: authOnly(c), signal: sig() }));
+    return { qrCode: d?.base64 || d?.qrcode?.base64, status: "connecting" };
+  },
+  disconnect: async (n: string, c: ProviderConfig) => {
+    await safeJson(await fetch(`${c.base_url}/instance/logout/${n}`, { method: "DELETE", headers: authOnly(c), signal: sig() }));
+    return { success: true };
+  },
+  sendMessage: async (n: string, c: ProviderConfig, p: any) => {
+    const d = await safeJson(await fetch(`${c.base_url}/message/sendText/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, text: p.text }), signal: sig() }));
+    return { messageId: d?.key?.id, status: "sent" };
+  },
+  sendMedia: async (n: string, c: ProviderConfig, p: any) => {
+    const d = await safeJson(await fetch(`${c.base_url}/message/sendMedia/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, mediatype: p.mediaType || "image", media: p.mediaUrl, caption: p.caption || "" }), signal: sig() }));
+    return { messageId: d?.key?.id, status: "sent" };
+  },
+  getGroups: async (n: string, c: ProviderConfig) => {
+    console.log(`[evo.getGroups] Fetching groups for instance: ${n}, url: ${c.base_url}/group/fetchAllGroups/${n}`);
+    const d = await safeJson(await fetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c), signal: sig() }));
+    console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
+    return { groups: Array.isArray(d) ? d : [] };
+  },
+  healthCheck: async (c: ProviderConfig) => {
+    const s = Date.now();
+    try { const r = await fetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
+    catch { return { healthy: false, latency: Date.now() - s }; }
+  },
 };
 
 Deno.serve(async (req) => {
@@ -77,7 +95,7 @@ Deno.serve(async (req) => {
       case "create-instance": {
         const { instanceName, providerId } = params;
         const { config, row } = await resolveProvider(providerId);
-        const apiRes = await withRetry(() => evo.createInstance(instanceName, config));
+        const apiRes = await evo.createInstance(instanceName, config);
         const msg = apiRes?.message;
         const inUse = Array.isArray(msg) ? msg.some((m: string) => typeof m === "string" && m.includes("already in use")) : typeof msg === "string" && msg.includes("already in use");
         if (!inUse && (apiRes?.status === 404 || apiRes?.status === 403 || apiRes?.error || apiRes?.message)) {
@@ -99,7 +117,7 @@ Deno.serve(async (req) => {
       case "connect-instance": {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
-        const r = await withRetry(() => evo.connect(inst.instance_name, config));
+        const r = await evo.connect(inst.instance_name, config);
         await svc.from("whatsapp_instances").update({ status: "connecting", qr_code: r.qrCode || null }).eq("id", params.instanceId);
         result = r;
         break;
@@ -124,7 +142,7 @@ Deno.serve(async (req) => {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
         const s = Date.now();
-        const r = await withRetry(() => evo.sendMessage(inst.instance_name, config, { to: params.to, text: params.text }));
+        const r = await evo.sendMessage(inst.instance_name, config, { to: params.to, text: params.text });
         await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "text", payload: { to: params.to, text: params.text }, status: r.status, latency_ms: Date.now() - s });
         result = r;
         break;
@@ -133,7 +151,7 @@ Deno.serve(async (req) => {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
         const s = Date.now();
-        const r = await withRetry(() => evo.sendMedia(inst.instance_name, config, params));
+        const r = await evo.sendMedia(inst.instance_name, config, params);
         await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "media", payload: params, status: r.status, latency_ms: Date.now() - s });
         result = r;
         break;
@@ -146,8 +164,14 @@ Deno.serve(async (req) => {
       }
       case "sync-groups": {
         const inst = await getInst(params.instanceId);
+        console.log(`[sync-groups] Instance ${inst.instance_name}, status: ${inst.status}`);
+        if (inst.status !== "connected") {
+          throw new Error(`A instância "${inst.instance_name}" não está conectada (status: ${inst.status}). Conecte a instância antes de sincronizar grupos.`);
+        }
         const { config } = await resolveProvider(inst.provider_id);
+        console.log(`[sync-groups] Fetching groups from Evolution API...`);
         const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
+        console.log(`[sync-groups] Got ${waGroups.length} groups, starting upsert...`);
         let synced = 0;
         for (const wg of waGroups) {
           const jid = wg.id || wg.jid;
@@ -163,6 +187,7 @@ Deno.serve(async (req) => {
           }
           synced++;
         }
+        console.log(`[sync-groups] Done. Synced: ${synced}/${waGroups.length}`);
         result = { synced, total: waGroups.length };
         break;
       }
@@ -188,7 +213,11 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ data: result }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err: any) {
-    console.error("Orchestrator error:", err);
-    return new Response(JSON.stringify({ error: err.message || "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
+    const msg = isTimeout
+      ? "A Evolution API não respondeu dentro de 25 segundos. Verifique se o servidor está acessível e se o URL/IP é público."
+      : (err.message || "Internal error");
+    console.error("Orchestrator error:", msg, err.name);
+    return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
