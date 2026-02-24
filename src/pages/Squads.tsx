@@ -91,6 +91,7 @@ const Squads = () => {
   const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
   const { data: scoreSettings = [] } = useMonitoringSettings("SCORE");
   const { data: statusSettings = [] } = useMonitoringSettings("STATUS");
+  const { data: keywordSettings = [] } = useMonitoringSettings("PALAVRA_CHAVE");
 
   const allMetrics = useOperationalMetrics(null);
   const filteredMetrics = useOperationalMetrics(effectiveTeamId);
@@ -135,6 +136,35 @@ const Squads = () => {
       return "Regular";
     };
   }, [scoreSettings]);
+
+  // Active keywords for description highlighting
+  const activeKeywords = useMemo(
+    () => keywordSettings.filter((k) => k.is_active).map((k) => k.label.toLowerCase()),
+    [keywordSettings]
+  );
+
+  function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function renderDescricao(text: string) {
+    if (activeKeywords.length === 0) return `"${text}"`;
+    const regex = new RegExp(`(${activeKeywords.map(escapeRegex).join("|")})`, "gi");
+    const parts = text.split(regex);
+    return (
+      <>
+        "
+        {parts.map((part, i) =>
+          activeKeywords.includes(part.toLowerCase()) ? (
+            <span key={i} className="font-bold text-primary">{part}</span>
+          ) : (
+            <span key={i}>{part}</span>
+          )
+        )}
+        "
+      </>
+    );
+  }
 
   // Squad grupos for table
   const squadGrupos = useMemo(() => {
@@ -566,7 +596,7 @@ const Squads = () => {
                             </td>
                             <td style={{ ...tdBase, borderBottom: borderStyle }}>
                               <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                "{row.descricao}"
+                                {renderDescricao(row.descricao)}
                               </p>
                             </td>
                           </tr>
