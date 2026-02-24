@@ -9,6 +9,20 @@ interface ProviderConfig { base_url: string; api_key: string; }
 
 const FETCH_TIMEOUT = 45000;
 
+async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err: any) {
+    const msg = err?.message || "";
+    if (msg.includes("certificate") || msg.includes("UnknownIssuer")) {
+      const httpUrl = String(url).replace("https://", "http://");
+      console.log(`[safeFetch] TLS error, falling back to HTTP: ${httpUrl}`);
+      return await fetch(httpUrl, init);
+    }
+    throw err;
+  }
+}
+
 async function safeJson(res: Response): Promise<any> {
   const text = await res.text();
   try { return JSON.parse(text); } catch { throw new Error(`Non-JSON (${res.status}): ${text.slice(0, 200)}`); }
@@ -20,35 +34,35 @@ const sig = () => AbortSignal.timeout(FETCH_TIMEOUT);
 
 const evo = {
   createInstance: async (n: string, c: ProviderConfig) =>
-    safeJson(await fetch(`${c.base_url}/instance/create`, { method: "POST", headers: headers(c), body: JSON.stringify({ instanceName: n, integration: "WHATSAPP-BAILEYS", qrcode: true }), signal: sig() })),
+    safeJson(await safeFetch(`${c.base_url}/instance/create`, { method: "POST", headers: headers(c), body: JSON.stringify({ instanceName: n, integration: "WHATSAPP-BAILEYS", qrcode: true }), signal: sig() })),
   deleteInstance: async (n: string, c: ProviderConfig) =>
-    safeJson(await fetch(`${c.base_url}/instance/delete/${n}`, { method: "DELETE", headers: headers(c), signal: sig() })),
+    safeJson(await safeFetch(`${c.base_url}/instance/delete/${n}`, { method: "DELETE", headers: headers(c), signal: sig() })),
   connect: async (n: string, c: ProviderConfig) => {
-    const d = await safeJson(await fetch(`${c.base_url}/instance/connect/${n}`, { headers: authOnly(c), signal: sig() }));
+    const d = await safeJson(await safeFetch(`${c.base_url}/instance/connect/${n}`, { headers: authOnly(c), signal: sig() }));
     return { qrCode: d?.base64 || d?.qrcode?.base64, status: "connecting" };
   },
   disconnect: async (n: string, c: ProviderConfig) => {
-    await safeJson(await fetch(`${c.base_url}/instance/logout/${n}`, { method: "DELETE", headers: authOnly(c), signal: sig() }));
+    await safeJson(await safeFetch(`${c.base_url}/instance/logout/${n}`, { method: "DELETE", headers: authOnly(c), signal: sig() }));
     return { success: true };
   },
   sendMessage: async (n: string, c: ProviderConfig, p: any) => {
-    const d = await safeJson(await fetch(`${c.base_url}/message/sendText/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, text: p.text }), signal: sig() }));
+    const d = await safeJson(await safeFetch(`${c.base_url}/message/sendText/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, text: p.text }), signal: sig() }));
     return { messageId: d?.key?.id, status: "sent" };
   },
   sendMedia: async (n: string, c: ProviderConfig, p: any) => {
-    const d = await safeJson(await fetch(`${c.base_url}/message/sendMedia/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, mediatype: p.mediaType || "image", media: p.mediaUrl, caption: p.caption || "" }), signal: sig() }));
+    const d = await safeJson(await safeFetch(`${c.base_url}/message/sendMedia/${n}`, { method: "POST", headers: headers(c), body: JSON.stringify({ number: p.to, mediatype: p.mediaType || "image", media: p.mediaUrl, caption: p.caption || "" }), signal: sig() }));
     return { messageId: d?.key?.id, status: "sent" };
   },
   getGroups: async (n: string, c: ProviderConfig) => {
     console.log(`[evo.getGroups] Fetching groups for instance: ${n}, url: ${c.base_url}/group/fetchAllGroups/${n}`);
-    const d = await safeJson(await fetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c), signal: sig() }));
+    const d = await safeJson(await safeFetch(`${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`, { headers: authOnly(c), signal: sig() }));
     console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
     return { groups: Array.isArray(d) ? d : [] };
   },
   setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
     console.log(`[evo.setWebhook] Setting webhook for ${n} → ${webhookUrl}`);
     try {
-      await safeJson(await fetch(`${c.base_url}/webhook/set/${n}`, {
+      await safeJson(await safeFetch(`${c.base_url}/webhook/set/${n}`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({
@@ -65,12 +79,12 @@ const evo = {
     }
   },
   connectionState: async (n: string, c: ProviderConfig) => {
-    const d = await safeJson(await fetch(`${c.base_url}/instance/connectionState/${n}`, { headers: authOnly(c), signal: sig() }));
+    const d = await safeJson(await safeFetch(`${c.base_url}/instance/connectionState/${n}`, { headers: authOnly(c), signal: sig() }));
     return d?.instance?.state || d?.state || "unknown";
   },
   healthCheck: async (c: ProviderConfig) => {
     const s = Date.now();
-    try { const r = await fetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
+    try { const r = await safeFetch(`${c.base_url}/instance/fetchInstances`, { headers: authOnly(c), signal: sig() }); await safeJson(r); return { healthy: r.ok, latency: Date.now() - s }; }
     catch { return { healthy: false, latency: Date.now() - s }; }
   },
 };
