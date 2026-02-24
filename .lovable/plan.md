@@ -1,50 +1,88 @@
 
 
-## Diagnóstico
+## Analise do Codigo Colado e Diagnostico do Problema Real
 
-Consultei a documentação da Evolution API v2. Os endpoints usados no orchestrator estão corretos:
-- `GET /group/fetchAllGroups/{instance}` com header `apikey`
-- `GET /instance/fetchInstances` com header `apikey`
-- `GET /instance/connectionState/{instance}` com header `apikey`
+### Problemas no codigo colado
 
-O problema **não é de endpoint**. O problema é que a conexão HTTPS com o domínio `sslip.io` **fica pendurada** (hang) por 45 segundos até o `AbortSignal.timeout` disparar. O erro de certificado TLS nunca é lançado como exceção porque o timeout mata a requisição antes. Por isso o `safeFetch` nunca chega ao bloco `catch` com a mensagem "certificate" -- ele recebe `TimeoutError` em vez disso.
+O codigo que voce colou tem varios bugs criticos:
 
-A prova: chamadas que não tocam a Evolution API (como `list-providers`, `get-instances`) retornam 200 em milissegundos. Apenas `sync-groups` (que chama `evo.getGroups` via HTTPS) dá timeout.
+1. **Codigo duplicado no escopo global** - O bloco `INSECURE_HOST_PATTERNS` + `isIpAddress` + `if (baseUrl...)` aparece duas vezes: uma dentro de `resolveProvider` (correto) e outra solta no escopo do modulo (erro de sintaxe - `baseUrl` nao existe nesse contexto)
+2. **Sem CORS headers** - Requisicoes do browser serao bloqueadas
+3. **Sem autenticacao** - Qualquer pessoa pode chamar a funcao
+4. **Sem integracao com Supabase** - Nao lê providers/instances do banco, nao persiste dados
+5. **Arquitetura incompativel** - O codigo colado eh uma funcao completamente diferente do orchestrator atual que ja funciona para check-status, create-instance, etc.
 
-## Solução
+**Esse codigo NAO deve substituir o orchestrator atual.** O orchestrator existente no projeto eh muito mais completo e a conversao HTTPS→HTTP ja esta implementada nele.
 
-Em vez de depender do fallback reativo (que nunca é acionado porque o timeout vem primeiro), converter proativamente HTTPS para HTTP na função `resolveProvider` quando a URL contém padrões indicativos de certificados inválidos (`sslip.io`, IPs diretos).
+### O problema real
 
-## Plano de Implementação
+Analisando os logs, o `check-status` funciona perfeitamente apos a conversao HTTP:
+```
+[resolveProvider] Auto-converted to HTTP: http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io
+[check-status] Instance robson: state=open, prevStatus=connected
+```
+
+Mas `sync-groups` e `get-groups` ainda dao timeout de 45 segundos. Isso indica que:
+
+1. A conversao HTTP funciona (check-status prova isso)
+2. O endpoint `/group/fetchAllGroups` especificamente nao responde ou o servidor Coolify redireciona HTTP→HTTPS para certas rotas, causando o hang TLS novamente
+
+### Causa raiz provavel
+
+O servidor Coolify provavelmente tem um redirect HTTP→HTTPS configurado. O `fetch` do Deno segue redirects automaticamente por padrao. Entao:
+
+```text
+1. fetch("http://...sslip.io/group/fetchAllGroups/robson")
+2. Servidor responde 301 → https://...sslip.io/group/fetchAllGroups/robson
+3. fetch segue o redirect para HTTPS
+4. TLS handshake trava (certificado invalido)
+5. Timeout apos 45 segundos
+```
+
+O `connectionState` funciona porque eh leve e pode completar antes do redirect, ou o path nao tem redirect.
+
+## Plano de Implementacao
 
 ### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
 
-1. Na função `resolveProvider`, após extrair `baseUrl`, adicionar lógica para detectar URLs com `sslip.io` ou padrões de IP e converter `https://` para `http://` automaticamente:
+**Mudanca 1**: Modificar `safeFetch` para usar `redirect: "manual"` e interceptar redirects HTTPS→HTTP automaticamente:
 
 ```text
-resolveProvider:
-  baseUrl = (row.config).base_url.replace(/\/+$/, "")
+safeFetch(url, init):
+  // Adicionar redirect: "manual" para impedir que fetch siga redirects HTTPS
+  response = fetch(url, { ...init, redirect: "manual" })
   
-  // Novo: converter HTTPS → HTTP para domínios com certificados auto-assinados
-  if (baseUrl.startsWith("https://")) {
-    const hostname = new URL(baseUrl).hostname
-    if (hostname.includes("sslip.io") || hostname.includes("nip.io") || /\d+\.\d+\.\d+\.\d+/.test(hostname)) {
-      baseUrl = baseUrl.replace("https://", "http://")
-      console.log("[resolveProvider] Auto-converted to HTTP:", baseUrl)
-    }
-  }
+  // Se receber redirect (301/302/307/308), verificar se destino eh HTTPS
+  if (response.status >= 300 && response.status < 400):
+    location = response.headers.get("location")
+    if (location starts with "https://" AND url starts with "http://"):
+      // Converter destino do redirect de volta para HTTP
+      httpLocation = location.replace("https://", "http://")
+      return fetch(httpLocation, { ...init, redirect: "manual" })
+  
+  return response
 ```
 
-2. Manter o `safeFetch` existente como segunda camada de proteção para outros cenários de TLS inesperados.
+**Mudanca 2**: Adicionar log de diagnostico na chamada `getGroups` para confirmar a URL final usada:
+
+```text
+evo.getGroups:
+  console.log("[evo.getGroups] URL:", url, "protocol:", new URL(url).protocol)
+```
+
+**Mudanca 3**: Manter o fallback TLS existente no `catch` do `safeFetch` como terceira camada de protecao.
 
 ### Resultado esperado
-- A URL `https://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io` será automaticamente convertida para `http://evo-uc8k4ccscosws8ksk0gs8g4k.72.60.48.134.sslip.io`
-- Todas as chamadas à Evolution API usarão HTTP diretamente, sem tentativa de TLS
-- Sem timeout, sem hang, sem necessidade de fallback
-- O `safeFetch` continua como rede de segurança para URLs HTTPS legítimas que falhem
+
+```text
+1. resolveProvider converte https://...sslip.io → http://...sslip.io  (camada 1)
+2. safeFetch faz request HTTP com redirect: "manual"
+3. Se servidor redirecionar para HTTPS, safeFetch intercepta e reescreve para HTTP  (camada 2)
+4. Se TLS error ocorrer mesmo assim, catch faz fallback HTTP  (camada 3)
+```
 
 ### Arquivos modificados
-| Arquivo | Mudança |
+| Arquivo | Mudanca |
 |---------|---------|
-| `supabase/functions/whatsapp-orchestrator/index.ts` | Adicionar auto-conversão HTTPS→HTTP no `resolveProvider` para domínios sslip.io/nip.io/IP |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Modificar `safeFetch` para usar `redirect: "manual"` e interceptar redirects HTTPS, adicionar logs de diagnostico em `getGroups` |
 
