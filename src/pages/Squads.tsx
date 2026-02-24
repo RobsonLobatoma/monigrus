@@ -1,16 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
+import { DateRange } from "react-day-picker";
 import {
   LayoutGrid,
   Users,
   AlertTriangle,
   TrendingUp,
   Clock,
-  Trophy,
   Shield,
   Search,
   CalendarIcon,
   X,
+  Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -64,11 +65,14 @@ function isLightColor(hex: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 > 150;
 }
 
+type FilterPeriod = "all" | "7d" | "14d" | "30d" | "custom";
+
 const Squads = () => {
   const { role, teamId, loading } = useCurrentUserRole();
   const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
   const [groupSearch, setGroupSearch] = useState("");
-  const [filterDate, setFilterDate] = useState<Date | undefined>(undefined);
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>("all");
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
   const [filterGestor, setFilterGestor] = useState<string>("all");
 
   // Supervisor can only see their squad
@@ -78,7 +82,8 @@ const Squads = () => {
   // Reset filters when squad changes
   useEffect(() => {
     setGroupSearch("");
-    setFilterDate(undefined);
+    setFilterPeriod("all");
+    setCustomDateRange(undefined);
     setFilterGestor("all");
   }, [effectiveTeamId]);
 
@@ -89,6 +94,18 @@ const Squads = () => {
 
   const allMetrics = useOperationalMetrics(null);
   const filteredMetrics = useOperationalMetrics(effectiveTeamId);
+
+  // Date range calculation
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    switch (filterPeriod) {
+      case "7d": return { from: subDays(now, 7), to: now };
+      case "14d": return { from: subDays(now, 14), to: now };
+      case "30d": return { from: subDays(now, 30), to: now };
+      case "custom": return customDateRange ? { from: customDateRange.from, to: customDateRange.to } : { from: undefined, to: undefined };
+      default: return { from: undefined, to: undefined };
+    }
+  }, [filterPeriod, customDateRange]);
 
   // Dynamic color maps
   const satStyleMap = useMemo(() => {
@@ -145,17 +162,53 @@ const Squads = () => {
     return Array.from(set).sort();
   }, [squadGrupos]);
 
-  const filteredGrupos = squadGrupos.filter((row) => {
-    const matchSearch =
-      row.grupo.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      row.gestorTrafego.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      row.status.toLowerCase().includes(groupSearch.toLowerCase());
-    const matchDate = filterDate
-      ? row.dataHora !== "—" && row.dataHora.startsWith(format(filterDate, "yyyy-MM-dd"))
-      : true;
-    const matchGestor = filterGestor !== "all" ? row.gestorTrafego === filterGestor : true;
-    return matchSearch && matchDate && matchGestor;
-  });
+  // Apply ALL filters (date range, gestor, search) globally
+  const filteredGrupos = useMemo(() => {
+    return squadGrupos.filter((row) => {
+      // Date range filter
+      if (dateRange.from) {
+        if (row.dataHora === "—") return false;
+        const rowDate = new Date(row.dataHora);
+        if (rowDate < dateRange.from) return false;
+        if (dateRange.to && rowDate > dateRange.to) return false;
+      }
+      // Gestor filter
+      if (filterGestor !== "all" && row.gestorTrafego !== filterGestor) return false;
+      // Search filter
+      if (groupSearch) {
+        const q = groupSearch.toLowerCase();
+        if (
+          !row.grupo.toLowerCase().includes(q) &&
+          !row.gestorTrafego.toLowerCase().includes(q) &&
+          !row.status.toLowerCase().includes(q)
+        ) return false;
+      }
+      return true;
+    });
+  }, [squadGrupos, dateRange, filterGestor, groupSearch]);
+
+  // Compute KPIs from filtered data
+  const filteredKPIs = useMemo(() => {
+    const scoreSum = filteredGrupos.reduce((s, g) => s + g.score, 0);
+    const scoreMedio = filteredGrupos.length > 0 ? Math.round(scoreSum / filteredGrupos.length) : 0;
+    const gruposCriticos = filteredGrupos.filter((g) => g.status === "CRÍTICO").length;
+    return { scoreMedio, gruposCriticos };
+  }, [filteredGrupos]);
+
+  // Filter gestorMetrics by selected gestor
+  const filteredGestorMetrics = useMemo(() => {
+    if (filterGestor === "all") return filteredMetrics.gestorMetrics;
+    return filteredMetrics.gestorMetrics.filter((gm) => gm.name === filterGestor);
+  }, [filteredMetrics.gestorMetrics, filterGestor]);
+
+  const hasActiveFilters = filterPeriod !== "all" || filterGestor !== "all" || groupSearch !== "";
+
+  const clearAllFilters = () => {
+    setFilterPeriod("all");
+    setCustomDateRange(undefined);
+    setFilterGestor("all");
+    setGroupSearch("");
+  };
 
   if (loading) return null;
 
@@ -235,6 +288,92 @@ const Squads = () => {
             </div>
           </div>
 
+          {/* ─── Global filter bar ─── */}
+          <div className="flex items-center flex-wrap gap-2 bg-muted/30 rounded-lg p-3 border">
+            <Filter size={14} className="text-muted-foreground" />
+
+            {/* Period buttons */}
+            {(["7d", "14d", "30d"] as FilterPeriod[]).map((p) => {
+              const label = p === "7d" ? "7 dias" : p === "14d" ? "14 dias" : "30 dias";
+              return (
+                <Button
+                  key={p}
+                  variant={filterPeriod === p ? "default" : "outline"}
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => setFilterPeriod(filterPeriod === p ? "all" : p)}
+                >
+                  {label}
+                </Button>
+              );
+            })}
+
+            {/* Custom range */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={filterPeriod === "custom" ? "default" : "outline"}
+                  size="sm"
+                  className={cn("h-8 text-xs gap-1.5")}
+                  onClick={() => { if (filterPeriod !== "custom") setFilterPeriod("custom"); }}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {filterPeriod === "custom" && customDateRange?.from
+                    ? `${format(customDateRange.from, "dd/MM")}${customDateRange.to ? ` - ${format(customDateRange.to, "dd/MM")}` : ""}`
+                    : "Personalizado"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="range"
+                  selected={customDateRange}
+                  onSelect={(range) => {
+                    setCustomDateRange(range);
+                    setFilterPeriod("custom");
+                  }}
+                  numberOfMonths={2}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+
+            <div className="w-px h-6 bg-border mx-1" />
+
+            {/* Gestor filter */}
+            <Select value={filterGestor} onValueChange={setFilterGestor}>
+              <SelectTrigger className="h-8 w-[200px] text-xs">
+                <SelectValue placeholder="Todos os gestores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os gestores</SelectItem>
+                {gestoresList.map((g) => (
+                  <SelectItem key={g} value={g}>{g}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Search */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar grupo..."
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                className="pl-8 pr-3 py-1.5 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-48 transition-all h-8"
+              />
+            </div>
+
+            {/* Clear all */}
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={clearAllFilters}>
+                <X className="h-3.5 w-3.5" />
+                Limpar
+              </Button>
+            )}
+          </div>
+
           {/* KPIs */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
@@ -242,7 +381,7 @@ const Squads = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Score Médio</p>
-                    <p className="text-3xl font-bold text-foreground mt-1">{currentSquad.scoreMedio}</p>
+                    <p className="text-3xl font-bold text-foreground mt-1">{filteredKPIs.scoreMedio}</p>
                   </div>
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                     <TrendingUp className="text-primary" size={20} />
@@ -256,7 +395,7 @@ const Squads = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Grupos Críticos</p>
-                    <p className="text-3xl font-bold text-destructive mt-1">{currentSquad.gruposCriticos}</p>
+                    <p className="text-3xl font-bold text-destructive mt-1">{filteredKPIs.gruposCriticos}</p>
                   </div>
                   <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
                     <AlertTriangle className="text-destructive" size={20} />
@@ -304,7 +443,7 @@ const Squads = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {filteredMetrics.gestorMetrics.length === 0 ? (
+              {filteredGestorMetrics.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">Nenhum gestor neste squad</p>
               ) : (
                 <Table>
@@ -318,7 +457,7 @@ const Squads = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredMetrics.gestorMetrics.map((gm, i) => (
+                    {filteredGestorMetrics.map((gm, i) => (
                       <TableRow key={gm.userId || gm.name}>
                         <TableCell className="font-bold text-muted-foreground">{i + 1}</TableCell>
                         <TableCell className="font-medium">{gm.name}</TableCell>
@@ -338,71 +477,10 @@ const Squads = () => {
           {/* Grupos do Squad - Monitoring Table */}
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <Shield size={16} className="text-primary" />
-                    Grupos do Squad
-                  </CardTitle>
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="text"
-                      placeholder="Buscar grupo..."
-                      value={groupSearch}
-                      onChange={(e) => setGroupSearch(e.target.value)}
-                      className="pl-8 pr-3 py-1.5 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-56 transition-all"
-                    />
-                  </div>
-                </div>
-
-                {/* Filters row */}
-                <div className="flex items-center flex-wrap gap-2">
-                  {/* Date filter */}
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "h-8 text-xs gap-1.5",
-                          !filterDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="h-3.5 w-3.5" />
-                        {filterDate ? format(filterDate, "dd/MM/yyyy") : "Filtrar por data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={filterDate}
-                        onSelect={setFilterDate}
-                        initialFocus
-                        className={cn("p-3 pointer-events-auto")}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {filterDate && (
-                    <Button variant="ghost" size="sm" className="h-8 px-1.5" onClick={() => setFilterDate(undefined)}>
-                      <X className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-
-                  {/* Gestor filter */}
-                  <Select value={filterGestor} onValueChange={setFilterGestor}>
-                    <SelectTrigger className="h-8 w-[200px] text-xs">
-                      <SelectValue placeholder="Todos os gestores" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os gestores</SelectItem>
-                      {gestoresList.map((g) => (
-                        <SelectItem key={g} value={g}>{g}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Shield size={16} className="text-primary" />
+                Grupos do Squad
+              </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-hidden rounded-b-lg">
