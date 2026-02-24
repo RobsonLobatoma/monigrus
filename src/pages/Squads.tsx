@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { format } from "date-fns";
 import {
   LayoutGrid,
   Users,
@@ -8,7 +9,13 @@ import {
   Trophy,
   Shield,
   Search,
+  CalendarIcon,
+  X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -61,10 +68,19 @@ const Squads = () => {
   const { role, teamId, loading } = useCurrentUserRole();
   const [selectedSquadId, setSelectedSquadId] = useState<string | null>(null);
   const [groupSearch, setGroupSearch] = useState("");
+  const [filterDate, setFilterDate] = useState<Date | undefined>(undefined);
+  const [filterGestor, setFilterGestor] = useState<string>("all");
 
   // Supervisor can only see their squad
   const isSupervisor = role === "SUPERVISOR";
   const effectiveTeamId = isSupervisor ? teamId : selectedSquadId;
+
+  // Reset filters when squad changes
+  useEffect(() => {
+    setGroupSearch("");
+    setFilterDate(undefined);
+    setFilterGestor("all");
+  }, [effectiveTeamId]);
 
   const { data: dbGrupos } = useGrupos();
   const { data: satSettings = [] } = useMonitoringSettings("SATISFACAO");
@@ -123,12 +139,23 @@ const Squads = () => {
       });
   }, [dbGrupos, effectiveTeamId, scoreToSatisfacao]);
 
-  const filteredGrupos = squadGrupos.filter(
-    (row) =>
+  // Unique gestores list
+  const gestoresList = useMemo(() => {
+    const set = new Set(squadGrupos.map((r) => r.gestorTrafego).filter((g) => g !== "—"));
+    return Array.from(set).sort();
+  }, [squadGrupos]);
+
+  const filteredGrupos = squadGrupos.filter((row) => {
+    const matchSearch =
       row.grupo.toLowerCase().includes(groupSearch.toLowerCase()) ||
       row.gestorTrafego.toLowerCase().includes(groupSearch.toLowerCase()) ||
-      row.status.toLowerCase().includes(groupSearch.toLowerCase())
-  );
+      row.status.toLowerCase().includes(groupSearch.toLowerCase());
+    const matchDate = filterDate
+      ? row.dataHora !== "—" && row.dataHora.startsWith(format(filterDate, "yyyy-MM-dd"))
+      : true;
+    const matchGestor = filterGestor !== "all" ? row.gestorTrafego === filterGestor : true;
+    return matchSearch && matchDate && matchGestor;
+  });
 
   if (loading) return null;
 
@@ -311,20 +338,69 @@ const Squads = () => {
           {/* Grupos do Squad - Monitoring Table */}
           <Card>
             <CardHeader className="pb-2">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Shield size={16} className="text-primary" />
-                  Grupos do Squad
-                </CardTitle>
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Buscar grupo..."
-                    value={groupSearch}
-                    onChange={(e) => setGroupSearch(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-56 transition-all"
-                  />
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Shield size={16} className="text-primary" />
+                    Grupos do Squad
+                  </CardTitle>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Buscar grupo..."
+                      value={groupSearch}
+                      onChange={(e) => setGroupSearch(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 w-56 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Filters row */}
+                <div className="flex items-center flex-wrap gap-2">
+                  {/* Date filter */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 text-xs gap-1.5",
+                          !filterDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        {filterDate ? format(filterDate, "dd/MM/yyyy") : "Filtrar por data"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={filterDate}
+                        onSelect={setFilterDate}
+                        initialFocus
+                        className={cn("p-3 pointer-events-auto")}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {filterDate && (
+                    <Button variant="ghost" size="sm" className="h-8 px-1.5" onClick={() => setFilterDate(undefined)}>
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+
+                  {/* Gestor filter */}
+                  <Select value={filterGestor} onValueChange={setFilterGestor}>
+                    <SelectTrigger className="h-8 w-[200px] text-xs">
+                      <SelectValue placeholder="Todos os gestores" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os gestores</SelectItem>
+                      {gestoresList.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </CardHeader>
