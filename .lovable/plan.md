@@ -1,67 +1,35 @@
 
 
-## Diagnostico dos 3 Problemas
+## Problema
 
-### Estado Atual do Banco
-- 93 grupos na tabela `grupos`, todos com `last_message = null` e `last_message_at = null`
-- 0 registros em `grupo_messages` (webhook nunca recebeu mensagens)
-- 1 instancia ativa: "robsonn" (connected)
-- Instancia deletada ("pessoal") deixou seus grupos no banco
+Existem 93 grupos na tabela `grupos` com `instance_id = NULL` e `ativo = true`. Esses grupos foram sincronizados antes da coluna `instance_id` ser adicionada. O `delete-instance` tenta desativar grupos com `.eq("instance_id", instanceId)`, mas como todos têm `instance_id = NULL`, nenhum é afetado.
 
-### Problema 1: Sincronizacao nao e vinculada a instancia
-A tabela `grupos` nao tem coluna `instance_id`. Quando voce sincroniza, todos os grupos sao inseridos sem referencia a qual instancia os trouxe. Quando a instancia e removida, os grupos ficam orfaos.
+## Plano
 
-**Correcao:**
-- Adicionar coluna `instance_id` (uuid, nullable) na tabela `grupos` via migracao
-- No `sync-groups` do orchestrator, gravar `instance_id` em cada grupo sincronizado
-- Monitoramento filtra apenas grupos que tenham `instance_id` de uma instancia existente
+### 1. Limpeza imediata dos dados orfãos (SQL UPDATE)
+Executar um UPDATE para marcar como `ativo = false` todos os grupos que têm `instance_id IS NULL`. Esses são dados orfãos que não pertencem a nenhuma instância ativa.
 
-### Problema 2: Coluna "Conversas" vazia
-`last_message` e `null` para todos os 93 grupos e `grupo_messages` tem 0 registros. O webhook da Evolution API nunca recebeu eventos de mensagem (problema de infra - a Evolution nao consegue alcancar o Supabase). A coluna mostra "Sem mensagens" porque nao ha dados.
+```sql
+UPDATE grupos SET ativo = false WHERE instance_id IS NULL;
+```
 
-**Correcao:**
-- Nao depender apenas do webhook para conversas
-- Durante o `sync-groups`, buscar a ultima mensagem de cada grupo via Evolution API (`/chat/findMessages/{instanceName}`) e salvar em `last_message` e `last_message_at`
-- Alternativa mais leve: usar o endpoint `/group/fetchAllGroups` que ja retorna `lastMessage` no payload (se disponivel na versao da Evolution API)
+### 2. Proteção no `useGrupos` hook
+Adicionar filtro adicional no hook `useGrupos` para garantir que apenas grupos com `instance_id` preenchido (vinculados a uma instância existente) sejam retornados. Isso previne que dados orfãos apareçam no Hub ou no Monitoramento, mesmo que `ativo` esteja `true` por engano.
 
-### Problema 3: Dados persistem apos remover instancia
-`delete-instance` apaga apenas de `whatsapp_instances` mas nao limpa os grupos associados.
+**Arquivo:** `src/hooks/useGrupos.ts`
+- Adicionar `.not("instance_id", "is", null)` na query
 
-**Correcao:**
-- No `delete-instance` do orchestrator, apos deletar a instancia, marcar como `ativo = false` todos os grupos cujo `instance_id` seja o da instancia deletada
-- Isso faz com que `useGrupos()` (que filtra `ativo = true`) automaticamente os exclua do Monitoramento
+### 3. Proteção no `delete-instance` do orchestrator
+Além de desativar por `instance_id`, também verificar se a instância que está sendo deletada tem grupos sem `instance_id` mas com o mesmo `whatsapp_group_id`. Isso cobre cenários de dados migrados.
+
+**Arquivo:** `supabase/functions/whatsapp-orchestrator/index.ts`  
+- Manter a lógica existente (já correta para dados novos)
 
 ---
 
-## Plano de Implementacao
-
-### 1. Migracao: Adicionar `instance_id` a tabela `grupos`
-```sql
-ALTER TABLE grupos ADD COLUMN instance_id uuid REFERENCES whatsapp_instances(id) ON DELETE SET NULL;
-```
-
-### 2. Orchestrator: `sync-groups` grava `instance_id`
-Ao inserir/atualizar cada grupo, incluir `instance_id: params.instanceId`.
-
-### 3. Orchestrator: `sync-groups` busca ultima mensagem
-Apos mapear os grupos, tentar buscar `lastMessage` do payload do `fetchAllGroups` (a Evolution API v2 retorna isso). Se disponivel, salvar em `last_message` e `last_message_at`.
-
-### 4. Orchestrator: `delete-instance` limpa grupos
-Apos deletar a instancia de `whatsapp_instances`, executar:
-```sql
-UPDATE grupos SET ativo = false WHERE instance_id = '<instanceId>'
-```
-
-### 5. Monitoramento: sem alteracoes necessarias
-O `useGrupos()` ja filtra `ativo = true`, entao grupos de instancias deletadas desaparecem automaticamente.
-
----
-
-### Arquivos Modificados
-
-| Arquivo | Mudanca |
-|---------|---------|
-| Migracao SQL | Adicionar coluna `instance_id` em `grupos` |
-| `whatsapp-orchestrator/index.ts` | sync-groups: gravar instance_id + extrair lastMessage; delete-instance: desativar grupos |
-| Nenhuma mudanca no frontend | `useGrupos` e Monitoramento ja funcionam corretamente com os dados |
+### Resultado esperado
+- Os 93 grupos orfãos desaparecem imediatamente dos painéis (Global e Pessoal)
+- Futuras sincronizações gravam `instance_id` corretamente
+- Futuras remoções de instância limpam os grupos associados
+- O hook `useGrupos` nunca retorna grupos sem instância vinculada
 
