@@ -62,3 +62,14 @@ export function useGetGroups() {
     mutationFn: (instanceId: string) => invoke("get-groups", { instanceId }),
   });
 }
+
+export function useSyncGroups() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (instanceId: string) => invoke("sync-groups", { instanceId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["grupos"] });
+      qc.invalidateQueries({ queryKey: ["whatsapp-instances"] });
+    },
+  });
+}
