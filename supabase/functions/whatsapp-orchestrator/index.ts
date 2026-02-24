@@ -8,6 +8,7 @@ const corsHeaders = {
 interface ProviderConfig { base_url: string; api_key: string; }
 
 const FETCH_TIMEOUT = 45000;
+const LONG_FETCH_TIMEOUT = 120000; // 2min for heavy endpoints like fetchAllGroups/findChats
 
 async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
   const urlStr = String(url);
@@ -78,7 +79,7 @@ const evo = {
   getGroups: async (n: string, c: ProviderConfig) => {
     const groupUrl = `${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`;
     console.log(`[evo.getGroups] URL: ${groupUrl}, protocol: ${new URL(groupUrl).protocol}`);
-    const d = await safeJson(await safeFetch(groupUrl, { headers: authOnly(c), signal: sig() }));
+    const d = await safeJson(await safeFetch(groupUrl, { headers: authOnly(c), signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT) }));
     console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
     return { groups: Array.isArray(d) ? d : [] };
   },
@@ -122,7 +123,7 @@ const evo = {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({}),
-        signal: sig()
+        signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT)
       }));
       return Array.isArray(d) ? d : [];
     } catch (e) {
@@ -280,7 +281,7 @@ Deno.serve(async (req) => {
       }
       case "sync-groups": {
         const syncStart = Date.now();
-        const MAX_EXEC_MS = 40000; // 40s safety margin
+        const MAX_EXEC_MS = 140000; // 140s safety margin (function limit is 150s)
 
         const inst = await getInst(params.instanceId);
         console.log(`[sync-groups] Instance ${inst.instance_name}, status: ${inst.status}`);
