@@ -12,38 +12,66 @@ const LONG_FETCH_TIMEOUT = 120000; // 2min for heavy endpoints like fetchAllGrou
 
 async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
   const urlStr = String(url);
-  try {
-    // Use redirect: "manual" to prevent Deno from auto-following HTTPS redirects
-    const res = await fetch(url, { ...init, redirect: "manual" });
+  const timeout = init?.signal ? undefined : AbortSignal.timeout(FETCH_TIMEOUT);
+  const baseInit = { ...init, signal: init?.signal || timeout };
 
-    // Intercept redirects that go back to HTTPS (e.g. Coolify/Nginx HTTP→HTTPS redirect)
-    if (res.status >= 300 && res.status < 400) {
-      const location = res.headers.get("location");
-      if (location) {
-        console.log(`[safeFetch] Redirect ${res.status} detected: ${urlStr} → ${location}`);
-        if (location.startsWith("https://") && urlStr.startsWith("http://")) {
-          const httpLocation = location.replace("https://", "http://");
-          console.log(`[safeFetch] Intercepted HTTPS redirect, forcing HTTP: ${httpLocation}`);
-          const retryInit = { ...init, redirect: "follow" as const, signal: init?.signal || AbortSignal.timeout(FETCH_TIMEOUT) };
-          return await fetch(httpLocation, retryInit);
-        }
-        // For non-HTTPS redirects, follow normally
-        const retryInit = { ...init, redirect: "follow" as const, signal: init?.signal || AbortSignal.timeout(FETCH_TIMEOUT) };
-        return await fetch(location, retryInit);
+  // Helper: attempt a single fetch, return response or null on TLS error
+  const tryFetch = async (u: string, opts: RequestInit): Promise<Response | null> => {
+    try {
+      return await fetch(u, opts);
+    } catch (err: any) {
+      const msg = err?.message || "";
+      if (msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL")) {
+        console.log(`[safeFetch] TLS error on ${u}: ${msg}`);
+        return null;
       }
+      throw err;
     }
+  };
 
-    return res;
-  } catch (err: any) {
-    const msg = err?.message || "";
-    if (msg.includes("certificate") || msg.includes("UnknownIssuer")) {
-      const httpUrl = urlStr.replace("https://", "http://");
-      console.log(`[safeFetch] TLS error, falling back to HTTP: ${httpUrl}`);
-      const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
-      return await fetch(httpUrl, retryInit);
-    }
-    throw err;
+  // 1) First attempt with redirect: manual
+  const res = await tryFetch(urlStr, { ...baseInit, redirect: "manual" });
+  if (!res) {
+    // TLS failed on original URL — try HTTP fallback
+    const httpUrl = urlStr.replace("https://", "http://");
+    console.log(`[safeFetch] TLS error, trying HTTP: ${httpUrl}`);
+    const httpRes = await tryFetch(httpUrl, { ...baseInit, redirect: "manual" });
+    if (!httpRes) throw new Error(`Falha TLS em ambos HTTP e HTTPS para ${urlStr}`);
+    // If HTTP also redirects, handle below
+    return await handleRedirect(httpRes, httpUrl, baseInit);
   }
+
+  return await handleRedirect(res, urlStr, baseInit);
+}
+
+async function handleRedirect(res: Response, originalUrl: string, init: RequestInit): Promise<Response> {
+  if (res.status < 300 || res.status >= 400) return res;
+
+  const location = res.headers.get("location");
+  if (!location) return res;
+
+  console.log(`[safeFetch] Redirect ${res.status}: ${originalUrl} → ${location}`);
+
+  // If redirecting HTTP→HTTPS, try HTTPS directly first
+  if (location.startsWith("https://") && originalUrl.startsWith("http://")) {
+    try {
+      const httpsRes = await fetch(location, { ...init, redirect: "follow" });
+      return httpsRes;
+    } catch (err: any) {
+      const msg = err?.message || "";
+      if (msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL")) {
+        console.error(`[safeFetch] HTTPS redirect failed (invalid cert). Server requires HTTPS but cert is invalid.`);
+        throw new Error(
+          "A Evolution API redireciona para HTTPS mas o certificado SSL é inválido. " +
+          "Configure um certificado válido (ex: Let's Encrypt) ou desabilite o redirecionamento forçado para HTTPS no seu servidor (Nginx/Coolify/Traefik)."
+        );
+      }
+      throw err;
+    }
+  }
+
+  // For other redirects, follow normally
+  return await fetch(location, { ...init, redirect: "follow" });
 }
 
 async function safeJson(res: Response): Promise<any> {
