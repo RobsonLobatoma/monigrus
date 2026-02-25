@@ -24,11 +24,11 @@ async function safeFetch(url: string | URL | Request, init?: RequestInit): Promi
         if (location.startsWith("https://") && urlStr.startsWith("http://")) {
           const httpLocation = location.replace("https://", "http://");
           console.log(`[safeFetch] Intercepted HTTPS redirect, forcing HTTP: ${httpLocation}`);
-          const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
+          const retryInit = { ...init, redirect: "follow" as const, signal: init?.signal || AbortSignal.timeout(FETCH_TIMEOUT) };
           return await fetch(httpLocation, retryInit);
         }
         // For non-HTTPS redirects, follow normally
-        const retryInit = init ? { ...init, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT) } : { redirect: "manual" as const };
+        const retryInit = { ...init, redirect: "follow" as const, signal: init?.signal || AbortSignal.timeout(FETCH_TIMEOUT) };
         return await fetch(location, retryInit);
       }
     }
