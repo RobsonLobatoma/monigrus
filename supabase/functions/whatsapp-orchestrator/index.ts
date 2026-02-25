@@ -19,12 +19,27 @@ async function safeFetch(url: string | URL | Request, init?: RequestInit): Promi
     return await fetch(urlStr, baseInit);
   } catch (err: any) {
     const msg = err?.message || "";
-    if (msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL")) {
-      const httpUrl = urlStr.replace("https://", "http://");
-      console.log(`[safeFetch] TLS error, fallback HTTP: ${httpUrl}`);
-      return await fetch(httpUrl, baseInit);
+    if (!(msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL"))) {
+      throw err;
     }
-    throw err;
+    // TLS failed → try HTTP with redirect: manual to avoid being redirected back to broken HTTPS
+    const httpUrl = urlStr.replace("https://", "http://");
+    console.log(`[safeFetch] TLS error, fallback HTTP (manual redirect): ${httpUrl}`);
+    const httpRes = await fetch(httpUrl, { ...baseInit, redirect: "manual" });
+
+    // If HTTP works (2xx/4xx/5xx), return it
+    if (httpRes.status < 300 || httpRes.status >= 400) return httpRes;
+
+    // Server redirects HTTP→HTTPS but cert is invalid → clear error
+    const location = httpRes.headers.get("location") || "";
+    if (location.startsWith("https://")) {
+      throw new Error(
+        "A Evolution API redireciona HTTP para HTTPS mas o certificado SSL é inválido (UnknownIssuer). " +
+        "Corrija o certificado SSL (ex: Let's Encrypt) ou desabilite o redirecionamento forçado HTTPS no seu servidor/proxy (Nginx/Coolify/Traefik)."
+      );
+    }
+    // Non-HTTPS redirect — follow it
+    return await fetch(location, baseInit);
   }
 }
 
