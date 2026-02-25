@@ -1,101 +1,75 @@
 
 
-## Diagnostico
+## Diagnóstico do Erro 307
 
-A tabela `tags` ja existe no banco com campos `id`, `nome`, `cor`, `organization_id`. A tabela `grupos` ja tem `tag_id` (uuid, nullable). A infraestrutura de dados ja esta pronta.
+O erro `Non-JSON (307): Temporary Redirect` ocorre porque o `safeFetch` está excessivamente complexo com `redirect: "manual"` + `handleRedirect`. O fluxo atual:
 
-O que falta:
-1. Tela de gerenciamento de tags dentro de Conexoes
-2. Atribuicao de tag a grupos
-3. Seletor de tag no botao de sync
-4. Passagem do `tagId` para a Edge Function
+1. `resolveProvider` converte `https://...sslip.io` → `http://...sslip.io`
+2. `safeFetch` faz fetch com `redirect: "manual"` → servidor retorna 307
+3. `handleRedirect` tenta seguir o redirect para HTTPS → mas a resposta do HTTPS TAMBÉM pode ser um 307 (para outro path/trailing slash), e esse segundo redirect não é tratado
+4. `safeJson` recebe o Response com status 307 e body "Temporary Redirect" → erro
+
+**A solução é simplificar `safeFetch` drasticamente**: usar `redirect: "follow"` como padrão e só tratar erros de TLS como fallback.
 
 ---
 
-## Plano de Implementacao
+## Sobre o Prompt Extenso
 
-### ETAPA 1 — Hook `useTags`
+O projeto **já possui** a maioria da infraestrutura solicitada:
+- ✅ Edge Function `whatsapp-orchestrator` com todas as ações (create, delete, connect, disconnect, sync, QR, webhooks, health-check)
+- ✅ Tabelas `whatsapp_instances`, `whatsapp_providers`, `whatsapp_message_log`, `whatsapp_webhooks_log`, `grupos`, `tags` com RLS
+- ✅ Hooks React Query (`useWhatsAppInstances`, `useWhatsAppProviders`, `useTags`, etc.)
+- ✅ Página Conexões com 5 tabs (Instâncias, Providers, Tags, Logs, Webhooks)
+- ✅ QR Code modal com polling
+- ✅ Sync de grupos em batch
 
-**Novo arquivo: `src/hooks/useTags.ts`**
+Reescrever tudo do zero com uma arquitetura diferente (classes, factory pattern, tabelas com user_id em vez de organization_id) **quebraria** o sistema funcional existente. O plano foca no que realmente precisa ser corrigido.
 
-CRUD de tags usando a tabela `tags` existente:
-- `useTags()` — query que lista todas as tags da organizacao
-- `useCreateTag()` — mutation para criar tag (nome + cor + organization_id)
-- `useUpdateTag()` — mutation para editar tag
-- `useDeleteTag()` — mutation para deletar tag
+---
 
-Precisa obter o `organization_id` do usuario logado. Buscar via `organization_members` onde `user_id = auth.uid()`.
+## Plano de Implementação
 
-### ETAPA 2 — Aba "Tags" na pagina Conexoes
+### Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`
 
-**Arquivo: `src/pages/Conexoes.tsx`**
+**Mudança única**: Simplificar `safeFetch` e eliminar `handleRedirect`:
 
-Adicionar uma 5a aba `<TabsTrigger value="tags">Tags</TabsTrigger>` ao `TabsList` existente.
-
-Conteudo da aba:
-- Card com formulario inline para criar tag (campo nome + seletor de cor + botao criar)
-- Tabela listando tags existentes com colunas: Cor (circulo colorido), Nome, Acoes (editar/excluir)
-- Edicao inline do nome e cor
-- Botao de excluir com confirmacao
-
-### ETAPA 3 — Seletor de tag no botao de sincronizar
-
-**Arquivo: `src/pages/Conexoes.tsx`**
-
-Substituir o botao simples de sync (linha 287) por um dropdown que contém:
-- Opcao "Sincronizar todos" (sem tag)
-- Lista de tags disponiveis
-- Ao selecionar uma tag, chama `handleSyncGroups(inst.id, tagId)`
-
-Usar `Popover` com lista de tags. O botao principal continua sendo o icone `RefreshCw`, mas ao clicar abre o popover com as opcoes.
-
-### ETAPA 4 — Passar `tagId` para a Edge Function
-
-**Arquivo: `src/hooks/useWhatsAppInstances.ts`**
-
-Modificar `useSyncGroups` para aceitar `tagId` opcional:
 ```text
-mutationFn: ({ instanceId, tagId }: { instanceId: string; tagId?: string }) =>
-  invoke("sync-groups", { instanceId, tagId })
+async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const urlStr = String(url);
+  const timeout = init?.signal ? undefined : AbortSignal.timeout(FETCH_TIMEOUT);
+  const baseInit: RequestInit = { ...init, signal: init?.signal || timeout, redirect: "follow" };
+
+  try {
+    return await fetch(urlStr, baseInit);
+  } catch (err: any) {
+    const msg = err?.message || "";
+    // TLS error → fallback to HTTP
+    if (msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL")) {
+      const httpUrl = urlStr.replace("https://", "http://");
+      console.log(`[safeFetch] TLS error, fallback HTTP: ${httpUrl}`);
+      return await fetch(httpUrl, baseInit);
+    }
+    throw err;
+  }
+}
 ```
 
-**Arquivo: `src/pages/Conexoes.tsx`**
+Isto:
+1. Usa `redirect: "follow"` — Deno segue automaticamente 301, 302, 307, 308
+2. Se TLS falha, tenta HTTP com `redirect: "follow"` — o servidor pode redirecionar de volta para HTTPS com cert válido e o Deno segue
+3. Remove toda a complexidade de `handleRedirect`, `tryFetch`, `redirect: "manual"`
 
-Atualizar `handleSyncGroups` para aceitar e passar `tagId`.
-
-### ETAPA 5 — Edge Function: aplicar `tag_id` nos grupos sincronizados
-
-**Arquivo: `supabase/functions/whatsapp-orchestrator/index.ts`**
-
-No case `sync-groups`, se `params.tagId` estiver presente:
-- Adicionar `tag_id: params.tagId` nos inserts de novos grupos
-- Adicionar `tag_id: params.tagId` nos updates de grupos existentes
-- Isso permite que o sync "marque" os grupos com a tag selecionada
-
-Se `params.tagId` for null/undefined, nao altera o `tag_id` existente.
-
-### ETAPA 6 — Atribuicao de tag individual na tela de Monitoramento
-
-**Arquivo: `src/pages/Monitoramento.tsx`**
-
-Na tabela de grupos, adicionar uma coluna "Tag" com um `Select` que permite escolher uma tag para cada grupo. Ao selecionar, faz update direto via `useUpdateGrupo`.
+A função `handleRedirect` inteira é removida.
 
 ---
 
-## Detalhe tecnico
-
-| Arquivo | Mudanca |
+| Arquivo | Mudança |
 |---------|---------|
-| `src/hooks/useTags.ts` | Novo hook CRUD para tabela `tags` |
-| `src/hooks/useWhatsAppInstances.ts` | `useSyncGroups` aceita `{ instanceId, tagId? }` |
-| `src/pages/Conexoes.tsx` | Nova aba Tags + popover no botao sync com seletor de tag |
-| `supabase/functions/whatsapp-orchestrator/index.ts` | `sync-groups` aplica `tag_id` quando passado |
-| `src/pages/Monitoramento.tsx` | Coluna Tag com select para atribuicao individual |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Simplificar `safeFetch` para ~10 linhas, remover `handleRedirect` |
 
 ## Resultado esperado
 
-1. Gerenciamento completo de tags (CRUD) dentro de Conexoes
-2. Sincronizacao com tag opcional — marca os grupos sincronizados com a tag escolhida
-3. Atribuicao individual de tag por grupo no Monitoramento
-4. Tags com nome e cor visualmente distintas
+1. Todas as chamadas à Evolution API seguem redirects automaticamente
+2. Fallback HTTP→HTTPS funciona sem loop de redirects
+3. Sem mais erros "Non-JSON (307)"
 
