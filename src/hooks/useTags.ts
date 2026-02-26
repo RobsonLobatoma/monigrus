@@ -7,14 +7,32 @@ export type Tag = Tables<"tags">;
 async function getOrgId(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Não autenticado");
-  const { data, error } = await supabase
+
+  // 1) Tentar organization_members
+  const { data: member } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
     .limit(1)
-    .single();
-  if (error || !data) throw new Error("Organização não encontrada");
-  return data.organization_id;
+    .maybeSingle();
+  if (member) return member.organization_id;
+
+  // 2) Fallback: buscar organização única e auto-vincular
+  const { data: orgs } = await supabase
+    .from("organizations")
+    .select("id")
+    .limit(2);
+  if (orgs && orgs.length === 1) {
+    const orgId = orgs[0].id;
+    // Auto-criar membership para o usuário
+    await supabase
+      .from("organization_members")
+      .insert({ organization_id: orgId, user_id: user.id })
+      .throwOnError();
+    return orgId;
+  }
+
+  throw new Error("Organização não encontrada");
 }
 
 export function useTags() {
