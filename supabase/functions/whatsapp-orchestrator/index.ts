@@ -487,6 +487,67 @@ Deno.serve(async (req) => {
         if (params.instanceId) q = q.eq("instance_id", params.instanceId);
         const { data } = await q; result = data; break;
       }
+      case "get-chats": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const chats = await evo.findChats(inst.instance_name, config);
+        // Normalize and sort by last message timestamp desc
+        const normalized = chats.map((c: any) => {
+          const jid = c.remoteJid || c.id || "";
+          const lastMsg = c.lastMessage;
+          const text = lastMsg?.message?.conversation
+            || lastMsg?.message?.extendedTextMessage?.text
+            || lastMsg?.message?.imageMessage?.caption
+            || lastMsg?.body
+            || "";
+          const ts = lastMsg?.messageTimestamp
+            ? (typeof lastMsg.messageTimestamp === "number" ? lastMsg.messageTimestamp : parseInt(lastMsg.messageTimestamp))
+            : 0;
+          const pushName = c.name || c.pushName || jid.split("@")[0];
+          return { remoteJid: jid, name: pushName, lastMessage: text, timestamp: ts, unreadCount: c.unreadCount || 0 };
+        });
+        normalized.sort((a: any, b: any) => b.timestamp - a.timestamp);
+        result = normalized;
+        break;
+      }
+      case "find-messages": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const url = `${config.base_url}/chat/findMessages/${inst.instance_name}`;
+        const body: any = { where: { key: { remoteJid: params.remoteJid } } };
+        if (params.limit) body.limit = params.limit;
+        const res = await safeJson(await safeFetch(url, {
+          method: "POST",
+          headers: headers(config),
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT),
+        }));
+        const msgs = (Array.isArray(res) ? res : res?.messages || []).map((m: any) => {
+          const key = m.key || {};
+          const text = m.message?.conversation
+            || m.message?.extendedTextMessage?.text
+            || m.message?.imageMessage?.caption
+            || m.message?.videoMessage?.caption
+            || m.message?.documentMessage?.caption
+            || m.body
+            || "";
+          const ts = m.messageTimestamp
+            ? (typeof m.messageTimestamp === "number" ? m.messageTimestamp : parseInt(m.messageTimestamp))
+            : 0;
+          return {
+            id: key.id || m.id,
+            fromMe: key.fromMe || false,
+            remoteJid: key.remoteJid || params.remoteJid,
+            pushName: m.pushName || "",
+            text,
+            timestamp: ts,
+            messageType: m.messageType || "conversation",
+          };
+        });
+        msgs.sort((a: any, b: any) => a.timestamp - b.timestamp);
+        result = msgs;
+        break;
+      }
       default:
         return new Response(JSON.stringify({ error: `Unknown action: ${action}` }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

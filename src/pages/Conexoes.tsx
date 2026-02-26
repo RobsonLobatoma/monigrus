@@ -13,7 +13,8 @@ import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, use
 import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X } from "lucide-react";
+import ChatTab from "@/components/ChatTab";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -243,11 +244,17 @@ export default function Conexoes() {
       <Tabs defaultValue="instances" className="space-y-4">
         <TabsList>
           <TabsTrigger value="instances">Instâncias</TabsTrigger>
+          <TabsTrigger value="chat"><MessageSquare className="w-4 h-4 mr-1" />Chat</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
         </TabsList>
+
+        {/* ── Chat Tab ── */}
+        <TabsContent value="chat">
+          <ChatTab />
+        </TabsContent>
 
         {/* ── Instances Tab ── */}
         <TabsContent value="instances" className="space-y-4">
