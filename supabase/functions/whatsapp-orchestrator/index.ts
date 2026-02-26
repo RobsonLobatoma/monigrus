@@ -87,16 +87,18 @@ const evo = {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({
-          enabled: true,
-          url: webhookUrl,
-          webhookByEvents: false,
-          webhookBase64: false,
-          events: [
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-            "CONNECTION_UPDATE",
-            "QRCODE_UPDATED"
-          ]
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            webhookByEvents: false,
+            webhookBase64: false,
+            events: [
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "CONNECTION_UPDATE",
+              "QRCODE_UPDATED"
+            ]
+          }
         }),
         signal: sig()
       }));
