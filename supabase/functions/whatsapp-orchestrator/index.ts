@@ -495,7 +495,7 @@ Deno.serve(async (req) => {
   } catch (err: any) {
     const isTimeout = err.name === "TimeoutError" || err.name === "AbortError";
     const msg = isTimeout
-      ? "A Evolution API não respondeu dentro de 45 segundos. Verifique se o servidor está acessível e se o URL/IP é público."
+      ? "A Evolution API não respondeu a tempo. Verifique se o servidor está acessível e tente novamente."
       : (err.message || "Internal error");
     console.error("Orchestrator error:", msg, err.name);
     return new Response(JSON.stringify({ error: msg }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
