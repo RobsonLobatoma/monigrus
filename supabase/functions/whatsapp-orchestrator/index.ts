@@ -574,10 +574,27 @@ Deno.serve(async (req) => {
             mediaUrl,
             mimetype,
             fileName,
+            // Include raw key+message for media fetching via getBase64FromMediaMessage
+            hasMedia: !!mediaType && mediaType !== "",
+            rawKey: mediaType ? key : undefined,
+            rawMessage: mediaType ? msg : undefined,
           };
         });
         msgs.sort((a: any, b: any) => a.timestamp - b.timestamp);
         result = msgs;
+        break;
+      }
+      case "get-media-base64": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const res = await safeJson(await safeFetch(`${config.base_url}/chat/getBase64FromMediaMessage/${inst.instance_name}`, {
+          method: "POST",
+          headers: headers(config),
+          body: JSON.stringify({ message: { key: params.key, message: params.message }, convertToMp4: params.convertToMp4 ?? false }),
+          signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT),
+        }));
+        // res should have { base64, mimetype }
+        result = { base64: res?.base64, mimetype: res?.mimetype || params.mimetype || "application/octet-stream" };
         break;
       }
       case "delete-message": {
