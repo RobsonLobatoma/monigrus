@@ -522,20 +522,47 @@ Deno.serve(async (req) => {
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT),
         }));
-        console.log(`[find-messages] Response type: ${typeof res}, isArray: ${Array.isArray(res)}, keys: ${res && typeof res === 'object' ? Object.keys(res).join(',') : 'N/A'}`);
         const rawMsgs = Array.isArray(res) ? res : Array.isArray(res?.messages) ? res.messages : Array.isArray(res?.messages?.records) ? res.messages.records : [];
         const msgs = rawMsgs.map((m: any) => {
           const key = m.key || {};
-          const text = m.message?.conversation
-            || m.message?.extendedTextMessage?.text
-            || m.message?.imageMessage?.caption
-            || m.message?.videoMessage?.caption
-            || m.message?.documentMessage?.caption
+          const msg = m.message || {};
+          const text = msg.conversation
+            || msg.extendedTextMessage?.text
+            || msg.imageMessage?.caption
+            || msg.videoMessage?.caption
+            || msg.documentMessage?.caption
             || m.body
             || "";
           const ts = m.messageTimestamp
             ? (typeof m.messageTimestamp === "number" ? m.messageTimestamp : parseInt(m.messageTimestamp))
             : 0;
+          // Detect media
+          let mediaUrl = "";
+          let mediaType = "";
+          let fileName = "";
+          let mimetype = "";
+          if (msg.imageMessage) {
+            mediaType = "image";
+            mediaUrl = msg.imageMessage.url || "";
+            mimetype = msg.imageMessage.mimetype || "image/jpeg";
+          } else if (msg.videoMessage) {
+            mediaType = "video";
+            mediaUrl = msg.videoMessage.url || "";
+            mimetype = msg.videoMessage.mimetype || "video/mp4";
+          } else if (msg.audioMessage) {
+            mediaType = "audio";
+            mediaUrl = msg.audioMessage.url || "";
+            mimetype = msg.audioMessage.mimetype || "audio/ogg";
+          } else if (msg.documentMessage) {
+            mediaType = "document";
+            mediaUrl = msg.documentMessage.url || "";
+            fileName = msg.documentMessage.fileName || "document";
+            mimetype = msg.documentMessage.mimetype || "application/octet-stream";
+          } else if (msg.stickerMessage) {
+            mediaType = "sticker";
+            mediaUrl = msg.stickerMessage.url || "";
+            mimetype = msg.stickerMessage.mimetype || "image/webp";
+          }
           return {
             id: key.id || m.id,
             fromMe: key.fromMe || false,
@@ -543,11 +570,42 @@ Deno.serve(async (req) => {
             pushName: m.pushName || "",
             text,
             timestamp: ts,
-            messageType: m.messageType || "conversation",
+            messageType: mediaType || m.messageType || "conversation",
+            mediaUrl,
+            mimetype,
+            fileName,
           };
         });
         msgs.sort((a: any, b: any) => a.timestamp - b.timestamp);
         result = msgs;
+        break;
+      }
+      case "delete-message": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const res = await safeJson(await safeFetch(`${config.base_url}/chat/deleteMessageForEveryone/${inst.instance_name}`, {
+          method: "DELETE",
+          headers: headers(config),
+          body: JSON.stringify({ id: params.messageId, remoteJid: params.remoteJid, fromMe: params.fromMe ?? true }),
+          signal: sig(),
+        }));
+        result = res;
+        break;
+      }
+      case "edit-message": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const res = await safeJson(await safeFetch(`${config.base_url}/chat/updateMessage/${inst.instance_name}`, {
+          method: "POST",
+          headers: headers(config),
+          body: JSON.stringify({
+            number: params.remoteJid,
+            text: params.text,
+            key: { remoteJid: params.remoteJid, fromMe: params.fromMe ?? true, id: params.messageId },
+          }),
+          signal: sig(),
+        }));
+        result = res;
         break;
       }
       default:
