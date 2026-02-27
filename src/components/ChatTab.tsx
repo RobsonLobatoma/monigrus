@@ -30,26 +30,8 @@ function isGroup(jid: string) {
   return jid.includes("@g.us");
 }
 
-function MediaRenderer({ msg }: { msg: any }) {
-  if (!msg.mediaUrl) return null;
-  switch (msg.messageType) {
-    case "image":
-    case "sticker":
-      return <img src={msg.mediaUrl} alt="media" className="max-w-full rounded mt-1 max-h-60 object-contain" />;
-    case "video":
-      return <video src={msg.mediaUrl} controls className="max-w-full rounded mt-1 max-h-60" />;
-    case "audio":
-      return <audio src={msg.mediaUrl} controls className="mt-1 w-full" />;
-    case "document":
-      return (
-        <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 mt-1 text-xs underline">
-          <FileText className="w-4 h-4" /> {msg.fileName || "Documento"}
-        </a>
-      );
-    default:
-      return null;
-  }
-}
+// MediaRenderer moved to src/components/chat/MediaRenderer.tsx
+import MediaRenderer from "@/components/chat/MediaRenderer";
 
 export default function ChatTab() {
   const { toast } = useToast();
@@ -263,7 +245,7 @@ export default function ChatTab() {
                             {!msg.fromMe && msg.pushName && (
                               <p className="text-xs font-semibold mb-0.5 opacity-80">{msg.pushName}</p>
                             )}
-                            <MediaRenderer msg={msg} />
+                            <MediaRenderer msg={msg} instanceId={selectedInstanceId} />
                             {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
                             {!msg.text && !msg.mediaUrl && <p className="whitespace-pre-wrap break-words">[{msg.messageType}]</p>}
                             <p className={`text-[10px] mt-1 ${msg.fromMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
