@@ -522,7 +522,9 @@ Deno.serve(async (req) => {
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT),
         }));
-        const msgs = (Array.isArray(res) ? res : res?.messages || []).map((m: any) => {
+        console.log(`[find-messages] Response type: ${typeof res}, isArray: ${Array.isArray(res)}, keys: ${res && typeof res === 'object' ? Object.keys(res).join(',') : 'N/A'}`);
+        const rawMsgs = Array.isArray(res) ? res : Array.isArray(res?.messages) ? res.messages : Array.isArray(res?.messages?.records) ? res.messages.records : [];
+        const msgs = rawMsgs.map((m: any) => {
           const key = m.key || {};
           const text = m.message?.conversation
             || m.message?.extendedTextMessage?.text
