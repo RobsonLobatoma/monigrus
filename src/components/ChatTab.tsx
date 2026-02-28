@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import ContactAvatar from "@/components/chat/ContactAvatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -171,11 +171,12 @@ export default function ChatTab() {
                       className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-accent/50 transition-colors ${selectedChat === chat.remoteJid ? "bg-accent" : ""}`}
                       onClick={() => { setSelectedChat(chat.remoteJid); setSelectedChatName(chat.name); }}
                     >
-                      <Avatar className="w-10 h-10 shrink-0">
-                        <AvatarFallback className="text-xs">
-                          {isGroup(chat.remoteJid) ? <Users className="w-4 h-4" /> : getInitials(chat.name)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <ContactAvatar
+                        instanceId={selectedInstanceId}
+                        remoteJid={chat.remoteJid}
+                        name={chat.name}
+                        isGroup={isGroup(chat.remoteJid)}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-sm truncate">{chat.name}</span>
@@ -202,11 +203,13 @@ export default function ChatTab() {
             ) : (
               <>
                 <div className="px-4 py-3 border-b flex items-center gap-3">
-                  <Avatar className="w-8 h-8">
-                    <AvatarFallback className="text-xs">
-                      {isGroup(selectedChat) ? <Users className="w-4 h-4" /> : getInitials(selectedChatName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <ContactAvatar
+                    instanceId={selectedInstanceId}
+                    remoteJid={selectedChat}
+                    name={selectedChatName}
+                    isGroup={isGroup(selectedChat)}
+                    className="w-8 h-8"
+                  />
                   <div>
                     <p className="font-medium text-sm">{selectedChatName}</p>
                     <p className="text-xs text-muted-foreground">{selectedChat}</p>

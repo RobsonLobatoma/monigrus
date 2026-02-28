@@ -8,7 +8,55 @@ const corsHeaders = {
 interface ProviderConfig { base_url: string; api_key: string; }
 
 const FETCH_TIMEOUT = 45000;
-const LONG_FETCH_TIMEOUT = 120000; // 2min for heavy endpoints like fetchAllGroups/findChats
+const LONG_FETCH_TIMEOUT = 120000;
+
+// ===== JID NORMALIZATION =====
+function normalizeJid(jid: string): { normalized: string; isGroup: boolean; original: string } {
+  if (!jid) return { normalized: "", isGroup: false, original: jid };
+  const original = jid;
+  const isGroup = jid.includes("@g.us");
+  
+  if (isGroup) {
+    // Groups: keep as-is (they're unique by group JID)
+    return { normalized: jid, isGroup: true, original };
+  }
+  
+  // Strip domain suffixes
+  let num = jid.split("@")[0];
+  // Remove all non-digit chars
+  num = num.replace(/\D/g, "");
+  
+  // Handle @lid JIDs - these are internal WhatsApp IDs, not phone numbers
+  if (jid.includes("@lid")) {
+    return { normalized: `lid_${num}`, isGroup: false, original };
+  }
+  
+  // Normalize to E.164-like format (just digits, starting with country code)
+  // If number starts with 55 and is 12-13 digits, it's a Brazilian number
+  if (num.startsWith("55") && (num.length === 12 || num.length === 13)) {
+    // Already correct format
+  } else if (num.length === 10 || num.length === 11) {
+    // Assume Brazilian without country code
+    num = "55" + num;
+  }
+  
+  return { normalized: num, isGroup: false, original };
+}
+
+function formatPhoneReadable(num: string): string {
+  if (!num || num.startsWith("lid_")) return num;
+  // Format as +55 XX XXXXX-XXXX for Brazilian numbers
+  if (num.startsWith("55") && (num.length === 12 || num.length === 13)) {
+    const ddd = num.slice(2, 4);
+    const rest = num.slice(4);
+    if (rest.length === 9) {
+      return `+55 ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+    } else {
+      return `+55 ${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+    }
+  }
+  return `+${num}`;
+}
 
 async function safeFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
   const urlStr = String(url);
@@ -22,15 +70,10 @@ async function safeFetch(url: string | URL | Request, init?: RequestInit): Promi
     if (!(msg.includes("certificate") || msg.includes("UnknownIssuer") || msg.includes("tls") || msg.includes("SSL"))) {
       throw err;
     }
-    // TLS failed → try HTTP with redirect: manual to avoid being redirected back to broken HTTPS
     const httpUrl = urlStr.replace("https://", "http://");
     console.log(`[safeFetch] TLS error, fallback HTTP (manual redirect): ${httpUrl}`);
     const httpRes = await fetch(httpUrl, { ...baseInit, redirect: "manual" });
-
-    // If HTTP works (2xx/4xx/5xx), return it
     if (httpRes.status < 300 || httpRes.status >= 400) return httpRes;
-
-    // Server redirects HTTP→HTTPS but cert is invalid → clear error
     const location = httpRes.headers.get("location") || "";
     if (location.startsWith("https://")) {
       throw new Error(
@@ -38,7 +81,6 @@ async function safeFetch(url: string | URL | Request, init?: RequestInit): Promi
         "Corrija o certificado SSL (ex: Let's Encrypt) ou desabilite o redirecionamento forçado HTTPS no seu servidor/proxy (Nginx/Coolify/Traefik)."
       );
     }
-    // Non-HTTPS redirect — follow it
     return await fetch(location, baseInit);
   }
 }
@@ -75,9 +117,8 @@ const evo = {
   },
   getGroups: async (n: string, c: ProviderConfig) => {
     const groupUrl = `${c.base_url}/group/fetchAllGroups/${n}?getParticipants=false`;
-    console.log(`[evo.getGroups] URL: ${groupUrl}, protocol: ${new URL(groupUrl).protocol}`);
+    console.log(`[evo.getGroups] URL: ${groupUrl}`);
     const d = await safeJson(await safeFetch(groupUrl, { headers: authOnly(c), signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT) }));
-    console.log(`[evo.getGroups] Got response, isArray: ${Array.isArray(d)}, length: ${Array.isArray(d) ? d.length : 'N/A'}`);
     return { groups: Array.isArray(d) ? d : [] };
   },
   setWebhook: async (n: string, c: ProviderConfig, webhookUrl: string) => {
@@ -92,17 +133,12 @@ const evo = {
             url: webhookUrl,
             webhookByEvents: false,
             webhookBase64: false,
-            events: [
-              "MESSAGES_UPSERT",
-              "MESSAGES_UPDATE",
-              "CONNECTION_UPDATE",
-              "QRCODE_UPDATED"
-            ]
+            events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"]
           }
         }),
         signal: sig()
       }));
-      console.log(`[evo.setWebhook] Webhook set successfully for ${n}:`, JSON.stringify(res));
+      console.log(`[evo.setWebhook] Webhook set successfully for ${n}`);
     } catch (e) {
       console.error(`[evo.setWebhook] Failed to set webhook for ${n}:`, e);
     }
@@ -138,6 +174,18 @@ const evo = {
       return null;
     }
   },
+  fetchProfilePicture: async (n: string, c: ProviderConfig, number: string) => {
+    try {
+      const d = await safeJson(await safeFetch(`${c.base_url}/chat/fetchProfilePictureUrl/${n}?number=${encodeURIComponent(number)}`, {
+        headers: authOnly(c),
+        signal: sig(),
+      }));
+      return d?.profilePictureUrl || d?.profilePicture || d?.url || d?.imgUrl || null;
+    } catch (e) {
+      console.log(`[evo.fetchProfilePicture] Failed for ${number}:`, e);
+      return null;
+    }
+  },
 };
 
 Deno.serve(async (req) => {
@@ -161,13 +209,11 @@ Deno.serve(async (req) => {
       if (!row) throw new Error("No active provider");
       let baseUrl = (row.config as any)?.base_url?.replace(/\/+$/, "");
       if (!baseUrl) throw new Error("Provider base_url not configured");
-      // Proactively convert HTTPS → HTTP for domains with self-signed certificates
       if (baseUrl.startsWith("https://")) {
         try {
           const hostname = new URL(baseUrl).hostname;
           if (hostname.includes("sslip.io") || hostname.includes("nip.io") || /\d+\.\d+\.\d+\.\d+/.test(hostname)) {
             baseUrl = baseUrl.replace("https://", "http://");
-            console.log("[resolveProvider] Auto-converted to HTTP:", baseUrl);
           }
         } catch {}
       }
@@ -210,7 +256,6 @@ Deno.serve(async (req) => {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
         try { await evo.deleteInstance(inst.instance_name, config); } catch {}
-        // Deactivate all groups linked to this instance before deleting
         await svc.from("grupos").update({ ativo: false }).eq("instance_id", params.instanceId);
         await svc.from("whatsapp_instances").delete().eq("id", params.instanceId);
         result = { success: true };
@@ -219,10 +264,8 @@ Deno.serve(async (req) => {
       case "connect-instance": {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
-        // Check real status first - if already connected, skip QR flow
         try {
           const realState = await evo.connectionState(inst.instance_name, config);
-          console.log(`[connect-instance] Real state for ${inst.instance_name}: ${realState}`);
           if (realState === "open") {
             await svc.from("whatsapp_instances").update({ status: "connected", qr_code: null }).eq("id", params.instanceId);
             result = { alreadyConnected: true, status: "connected" };
@@ -280,7 +323,7 @@ Deno.serve(async (req) => {
       }
       case "sync-groups": {
         const syncStart = Date.now();
-        const MAX_EXEC_MS = 140000; // 140s safety margin (function limit is 150s)
+        const MAX_EXEC_MS = 140000;
 
         const inst = await getInst(params.instanceId);
         console.log(`[sync-groups] Instance ${inst.instance_name}, status: ${inst.status}`);
@@ -289,43 +332,35 @@ Deno.serve(async (req) => {
         }
         const { config } = await resolveProvider(inst.provider_id);
 
-        // Fetch authenticated user's profile for gestor enrichment
         const { data: profile } = await svc.from("user_profiles")
           .select("full_name, team_id")
           .eq("user_id", user.id)
           .maybeSingle();
         const gestorName = profile?.full_name ?? null;
         const gestorTeamId = profile?.team_id ?? null;
-        console.log(`[sync-groups] Gestor: ${gestorName}, team_id: ${gestorTeamId}`);
 
-        // 1. Fetch all groups from Evolution API (single call)
         console.log(`[sync-groups] Fetching groups from Evolution API...`);
         const { groups: waGroups } = await evo.getGroups(inst.instance_name, config);
         console.log(`[sync-groups] Got ${waGroups.length} groups from API`);
 
-        // 2. Pre-load ALL existing groups for this instance in 1 query
         const { data: allExisting } = await svc.from("grupos")
           .select("id, gestor, whatsapp_group_id, nome")
           .eq("instance_id", inst.id);
         const existingMap = new Map((allExisting || []).map(g => [g.whatsapp_group_id, g]));
-        console.log(`[sync-groups] Pre-loaded ${existingMap.size} existing groups from DB`);
 
-        // Also pre-load groups without whatsapp_group_id for name-matching
         const { data: unmatchedGroups } = await svc.from("grupos")
           .select("id, nome")
           .is("whatsapp_group_id", null);
         const nameMap = new Map((unmatchedGroups || []).map(g => [g.nome, g.id]));
 
-        // 3. Process in batches of 50
         const BATCH_SIZE = 50;
         let synced = 0;
         const jidToGroupId: Record<string, string> = {};
         let timedOut = false;
 
         for (let i = 0; i < waGroups.length; i += BATCH_SIZE) {
-          // Timeout protection
           if (Date.now() - syncStart > MAX_EXEC_MS) {
-            console.log(`[sync-groups] Time limit reached at batch ${Math.floor(i / BATCH_SIZE)}, processed ${synced}/${waGroups.length}`);
+            console.log(`[sync-groups] Time limit reached, processed ${synced}/${waGroups.length}`);
             timedOut = true;
             break;
           }
@@ -351,13 +386,12 @@ Deno.serve(async (req) => {
               toUpdate.push({ id: existing.id, data: upd });
               jidToGroupId[jid] = existing.id;
             } else {
-              // Check name-match for groups without whatsapp_group_id
               const matchedId = nameMap.get(name);
               if (matchedId) {
                 const upd: any = { whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true };
                 toUpdate.push({ id: matchedId, data: upd });
                 jidToGroupId[jid] = matchedId;
-                nameMap.delete(name); // consumed
+                nameMap.delete(name);
               } else {
                 toInsert.push({ nome: name, whatsapp_group_id: jid, instance_id: inst.id, gestor: gestorName, gestor_id: user.id, team_id: gestorTeamId, ultima_atividade: new Date().toISOString(), ativo: true, status: "PENDENTE", sla: "DENTRO DO SLA", ...(params.tagId ? { tag_id: params.tagId } : {}) });
               }
@@ -365,13 +399,9 @@ Deno.serve(async (req) => {
             synced++;
           }
 
-          // Batch updates: use Promise.all with individual updates (Supabase doesn't support multi-row update with different values)
-          // But we batch them in parallel within the batch, not sequentially
           if (toUpdate.length > 0) {
             await Promise.all(toUpdate.map(u => svc.from("grupos").update(u.data).eq("id", u.id)));
           }
-
-          // Batch insert
           if (toInsert.length > 0) {
             const { data: inserted } = await svc.from("grupos").insert(toInsert).select("id, whatsapp_group_id");
             if (inserted) {
@@ -384,23 +414,20 @@ Deno.serve(async (req) => {
 
         console.log(`[sync-groups] Upsert done: ${synced}/${waGroups.length} groups processed`);
 
-        // 4. Fetch last messages using findChats (single API call)
         const jids = Object.keys(jidToGroupId);
         let messagesFound = 0;
 
         if (!timedOut && Date.now() - syncStart < MAX_EXEC_MS) {
           console.log(`[sync-groups] Fetching chats from Evolution API...`);
           const chats = await evo.findChats(inst.instance_name, config);
-          console.log(`[sync-groups] Got ${chats.length} chats, mapping to groups...`);
+          console.log(`[sync-groups] Got ${chats.length} chats`);
 
-          // Build map: remoteJid → lastMessage data
           const chatMap = new Map<string, any>();
           for (const chat of chats) {
             const jid = chat.remoteJid || chat.id;
             if (jid && chat.lastMessage) chatMap.set(jid, chat);
           }
 
-          // Batch message updates
           const msgUpdates: { id: string; last_message: string; last_message_at: string }[] = [];
           for (const jid of jids) {
             const chat = chatMap.get(jid);
@@ -422,37 +449,28 @@ Deno.serve(async (req) => {
             msgUpdates.push({ id: jidToGroupId[jid], last_message: lastMsg, last_message_at: ts });
           }
 
-          // Process message updates in batches of 50 (parallel within batch)
           for (let i = 0; i < msgUpdates.length; i += BATCH_SIZE) {
-            if (Date.now() - syncStart > MAX_EXEC_MS) {
-              console.log(`[sync-groups] Time limit on message updates at ${messagesFound}`);
-              break;
-            }
+            if (Date.now() - syncStart > MAX_EXEC_MS) break;
             const msgBatch = msgUpdates.slice(i, i + BATCH_SIZE);
             await Promise.all(msgBatch.map(u => svc.from("grupos").update({ last_message: u.last_message, last_message_at: u.last_message_at }).eq("id", u.id)));
             messagesFound += msgBatch.length;
           }
-          console.log(`[sync-groups] Messages updated: ${messagesFound}/${jids.length}`);
         }
 
-        // 5. Auto-register webhook if not configured
         if (Date.now() - syncStart < MAX_EXEC_MS) {
           const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/whatsapp-webhook`;
           try {
             const webhookInfo = await evo.findWebhook(inst.instance_name, config);
             const isEnabled = webhookInfo?.enabled === true || webhookInfo?.webhook?.enabled === true;
             if (!isEnabled) {
-              console.log(`[sync-groups] Webhook not enabled, registering...`);
               await evo.setWebhook(inst.instance_name, config, webhookUrl);
             }
-          } catch (e) {
-            console.log(`[sync-groups] Could not check webhook, registering anyway...`);
+          } catch {
             await evo.setWebhook(inst.instance_name, config, webhookUrl);
           }
         }
 
         const elapsed = ((Date.now() - syncStart) / 1000).toFixed(1);
-        console.log(`[sync-groups] Done in ${elapsed}s. Synced: ${synced}/${waGroups.length}${timedOut ? " (partial - timed out)" : ""}`);
         result = { synced, total: waGroups.length, messagesFound, timedOut, elapsed: `${elapsed}s` };
         break;
       }
@@ -461,7 +479,6 @@ Deno.serve(async (req) => {
         const { config } = await resolveProvider(inst.provider_id);
         const prevStatus = inst.status;
         const state = await evo.connectionState(inst.instance_name, config);
-        console.log(`[check-status] Instance ${inst.instance_name}: state=${state}, prevStatus=${prevStatus}`);
         const statusMap: Record<string, string> = { open: "connected", close: "disconnected", connecting: "connecting" };
         const newStatus = statusMap[state] || "disconnected";
         const upd: any = { status: newStatus };
@@ -491,9 +508,31 @@ Deno.serve(async (req) => {
         const inst = await getInst(params.instanceId);
         const { config } = await resolveProvider(inst.provider_id);
         const chats = await evo.findChats(inst.instance_name, config);
-        // Normalize and sort by last message timestamp desc
-        const normalized = chats.map((c: any) => {
+        
+        // Fetch group metadata for name resolution
+        let groupMetadata: Map<string, string> = new Map();
+        try {
+          const { groups } = await evo.getGroups(inst.instance_name, config);
+          for (const g of groups) {
+            const jid = g.id || g.jid;
+            const name = g.subject || g.name;
+            if (jid && name) groupMetadata.set(jid, name);
+          }
+          console.log(`[get-chats] Loaded ${groupMetadata.size} group names`);
+        } catch (e) {
+          console.log(`[get-chats] Could not fetch group metadata:`, e);
+        }
+        
+        // Normalize and deduplicate
+        const dedup = new Map<string, any>();
+        
+        for (const c of chats) {
           const jid = c.remoteJid || c.id || "";
+          if (!jid) continue;
+          
+          const { normalized, isGroup } = normalizeJid(jid);
+          if (!normalized) continue;
+          
           const lastMsg = c.lastMessage;
           const text = lastMsg?.message?.conversation
             || lastMsg?.message?.extendedTextMessage?.text
@@ -503,10 +542,37 @@ Deno.serve(async (req) => {
           const ts = lastMsg?.messageTimestamp
             ? (typeof lastMsg.messageTimestamp === "number" ? lastMsg.messageTimestamp : parseInt(lastMsg.messageTimestamp))
             : 0;
-          const pushName = c.name || c.pushName || jid.split("@")[0];
-          return { remoteJid: jid, name: pushName, lastMessage: text, timestamp: ts, unreadCount: c.unreadCount || 0 };
-        });
+          
+          // Resolve name
+          let name = "";
+          if (isGroup) {
+            // Use group metadata for name
+            name = groupMetadata.get(jid) || c.name || c.pushName || jid.split("@")[0];
+          } else {
+            // Use pushName from chat or lastMessage, fallback to formatted number
+            name = c.name || c.pushName || lastMsg?.pushName || formatPhoneReadable(normalized);
+          }
+          
+          const entry = {
+            remoteJid: jid, // Keep original JID for find-messages compatibility
+            normalizedId: normalized,
+            name,
+            lastMessage: text,
+            timestamp: ts,
+            unreadCount: c.unreadCount || 0,
+            isGroup,
+          };
+          
+          // Dedup: keep the most recent entry per normalized ID
+          const existing = dedup.get(normalized);
+          if (!existing || ts > existing.timestamp) {
+            dedup.set(normalized, entry);
+          }
+        }
+        
+        const normalized = Array.from(dedup.values());
         normalized.sort((a: any, b: any) => b.timestamp - a.timestamp);
+        console.log(`[get-chats] ${chats.length} raw → ${normalized.length} deduplicated chats`);
         result = normalized;
         break;
       }
@@ -536,32 +602,20 @@ Deno.serve(async (req) => {
           const ts = m.messageTimestamp
             ? (typeof m.messageTimestamp === "number" ? m.messageTimestamp : parseInt(m.messageTimestamp))
             : 0;
-          // Detect media
           let mediaUrl = "";
           let mediaType = "";
           let fileName = "";
           let mimetype = "";
           if (msg.imageMessage) {
-            mediaType = "image";
-            mediaUrl = msg.imageMessage.url || "";
-            mimetype = msg.imageMessage.mimetype || "image/jpeg";
+            mediaType = "image"; mediaUrl = msg.imageMessage.url || ""; mimetype = msg.imageMessage.mimetype || "image/jpeg";
           } else if (msg.videoMessage) {
-            mediaType = "video";
-            mediaUrl = msg.videoMessage.url || "";
-            mimetype = msg.videoMessage.mimetype || "video/mp4";
+            mediaType = "video"; mediaUrl = msg.videoMessage.url || ""; mimetype = msg.videoMessage.mimetype || "video/mp4";
           } else if (msg.audioMessage) {
-            mediaType = "audio";
-            mediaUrl = msg.audioMessage.url || "";
-            mimetype = msg.audioMessage.mimetype || "audio/ogg";
+            mediaType = "audio"; mediaUrl = msg.audioMessage.url || ""; mimetype = msg.audioMessage.mimetype || "audio/ogg";
           } else if (msg.documentMessage) {
-            mediaType = "document";
-            mediaUrl = msg.documentMessage.url || "";
-            fileName = msg.documentMessage.fileName || "document";
-            mimetype = msg.documentMessage.mimetype || "application/octet-stream";
+            mediaType = "document"; mediaUrl = msg.documentMessage.url || ""; fileName = msg.documentMessage.fileName || "document"; mimetype = msg.documentMessage.mimetype || "application/octet-stream";
           } else if (msg.stickerMessage) {
-            mediaType = "sticker";
-            mediaUrl = msg.stickerMessage.url || "";
-            mimetype = msg.stickerMessage.mimetype || "image/webp";
+            mediaType = "sticker"; mediaUrl = msg.stickerMessage.url || ""; mimetype = msg.stickerMessage.mimetype || "image/webp";
           }
           return {
             id: key.id || m.id,
@@ -574,7 +628,6 @@ Deno.serve(async (req) => {
             mediaUrl,
             mimetype,
             fileName,
-            // Include raw key+message for media fetching via getBase64FromMediaMessage
             hasMedia: !!mediaType && mediaType !== "",
             rawKey: mediaType ? key : undefined,
             rawMessage: mediaType ? msg : undefined,
@@ -593,8 +646,14 @@ Deno.serve(async (req) => {
           body: JSON.stringify({ message: { key: params.key, message: params.message }, convertToMp4: params.convertToMp4 ?? false }),
           signal: AbortSignal.timeout(LONG_FETCH_TIMEOUT),
         }));
-        // res should have { base64, mimetype }
         result = { base64: res?.base64, mimetype: res?.mimetype || params.mimetype || "application/octet-stream" };
+        break;
+      }
+      case "get-profile-picture": {
+        const inst = await getInst(params.instanceId);
+        const { config } = await resolveProvider(inst.provider_id);
+        const pictureUrl = await evo.fetchProfilePicture(inst.instance_name, config, params.remoteJid);
+        result = { pictureUrl };
         break;
       }
       case "delete-message": {
