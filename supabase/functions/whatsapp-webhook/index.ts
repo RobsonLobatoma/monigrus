@@ -79,29 +79,31 @@ Deno.serve(async (req) => {
         const messages = Array.isArray(body.data) ? body.data : [body.data];
 
         for (const msg of messages) {
-          if (msg.key && !msg.key.fromMe) {
-            const remoteJid = msg.key?.remoteJid || "";
-            const isGroup = remoteJid.endsWith("@g.us");
-            const senderName = msg.pushName || msg.key?.participant || "Desconhecido";
-            const messageText =
-              msg.message?.conversation ||
-              msg.message?.extendedTextMessage?.text ||
-              msg.message?.imageMessage?.caption ||
-              msg.message?.videoMessage?.caption ||
-              msg.message?.documentMessage?.caption ||
-              `[${msg.messageType || "mídia"}]`;
-            const messageType = msg.messageType || "text";
+          if (!msg.key) continue;
+          const remoteJid = msg.key?.remoteJid || "";
+          const isGroup = remoteJid.endsWith("@g.us");
+          const isFromMe = msg.key.fromMe || false;
+          const senderName = isFromMe ? "Você" : (msg.pushName || msg.key?.participant || "Desconhecido");
+          const messageText =
+            msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            msg.message?.imageMessage?.caption ||
+            msg.message?.videoMessage?.caption ||
+            msg.message?.documentMessage?.caption ||
+            `[${msg.messageType || "mídia"}]`;
+          const messageType = msg.messageType || "text";
 
-            // Use messageTimestamp from Evolution API v2
-            const receivedAt = msg.messageTimestamp
-              ? new Date(
-                  (typeof msg.messageTimestamp === "number"
-                    ? msg.messageTimestamp
-                    : parseInt(msg.messageTimestamp)) * 1000
-                ).toISOString()
-              : new Date().toISOString();
+          // Use messageTimestamp from Evolution API v2
+          const receivedAt = msg.messageTimestamp
+            ? new Date(
+                (typeof msg.messageTimestamp === "number"
+                  ? msg.messageTimestamp
+                  : parseInt(msg.messageTimestamp)) * 1000
+              ).toISOString()
+            : new Date().toISOString();
 
-            // Log to whatsapp_message_log
+          // Log to whatsapp_message_log (only inbound)
+          if (!isFromMe) {
             await supabase.from("whatsapp_message_log").insert({
               instance_id: instanceId,
               direction: "inbound",
@@ -109,44 +111,44 @@ Deno.serve(async (req) => {
               payload: msg,
               status: "delivered",
             });
+          }
 
-            if (isGroup) {
-              // Insert into grupo_messages
-              await supabase.from("grupo_messages").insert({
-                instance_id: instanceId,
-                whatsapp_group_id: remoteJid,
-                sender_name: senderName,
-                message_text: messageText,
-                message_type: messageType,
-                received_at: receivedAt,
-              });
+          if (isGroup) {
+            // Insert into grupo_messages (both inbound and outbound)
+            await supabase.from("grupo_messages").insert({
+              instance_id: instanceId,
+              whatsapp_group_id: remoteJid,
+              sender_name: senderName,
+              message_text: messageText,
+              message_type: messageType,
+              received_at: receivedAt,
+            });
 
-              // Update grupos table if mapped
-              const { data: grupo } = await supabase
-                .from("grupos")
-                .select("id, mensagens")
+            // Update grupos table if mapped
+            const { data: grupo } = await supabase
+              .from("grupos")
+              .select("id, mensagens")
+              .eq("whatsapp_group_id", remoteJid)
+              .maybeSingle();
+
+            if (grupo) {
+              // Update grupo_messages with grupo_id
+              await supabase
+                .from("grupo_messages")
+                .update({ grupo_id: grupo.id })
                 .eq("whatsapp_group_id", remoteJid)
-                .maybeSingle();
+                .is("grupo_id", null);
 
-              if (grupo) {
-                // Update grupo_messages with grupo_id
-                await supabase
-                  .from("grupo_messages")
-                  .update({ grupo_id: grupo.id })
-                  .eq("whatsapp_group_id", remoteJid)
-                  .is("grupo_id", null);
-
-                // Update last_message and increment message count
-                await supabase
-                  .from("grupos")
-                  .update({
-                    last_message: `${senderName}: ${messageText}`.substring(0, 500),
-                    last_message_at: receivedAt,
-                    ultima_atividade: receivedAt,
-                    mensagens: (grupo.mensagens || 0) + 1,
-                  })
-                  .eq("id", grupo.id);
-              }
+              // Update last_message and increment message count
+              await supabase
+                .from("grupos")
+                .update({
+                  last_message: `${senderName}: ${messageText}`.substring(0, 500),
+                  last_message_at: receivedAt,
+                  ultima_atividade: receivedAt,
+                  mensagens: (grupo.mensagens || 0) + 1,
+                })
+                .eq("id", grupo.id);
             }
           }
         }
