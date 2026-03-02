@@ -303,6 +303,18 @@ Deno.serve(async (req) => {
         const s = Date.now();
         const r = await evo.sendMessage(inst.instance_name, config, { to: params.to, text: params.text });
         await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "text", payload: { to: params.to, text: params.text }, status: r.status, latency_ms: Date.now() - s });
+        // Sync to grupos table if target is a group
+        if (params.to?.includes("@g.us")) {
+          const { data: grupo } = await svc.from("grupos").select("id, mensagens").eq("whatsapp_group_id", params.to).maybeSingle();
+          if (grupo) {
+            await svc.from("grupos").update({
+              last_message: `Você: ${params.text}`.substring(0, 500),
+              last_message_at: new Date().toISOString(),
+              ultima_atividade: new Date().toISOString(),
+              mensagens: (grupo.mensagens || 0) + 1,
+            }).eq("id", grupo.id);
+          }
+        }
         result = r;
         break;
       }
@@ -312,6 +324,20 @@ Deno.serve(async (req) => {
         const s = Date.now();
         const r = await evo.sendMedia(inst.instance_name, config, params);
         await svc.from("whatsapp_message_log").insert({ instance_id: params.instanceId, direction: "outbound", message_type: "media", payload: params, status: r.status, latency_ms: Date.now() - s });
+        // Sync to grupos table if target is a group
+        if (params.to?.includes("@g.us")) {
+          const mediaLabel = params.mediaType === "image" ? "[Imagem]" : params.mediaType === "video" ? "[Vídeo]" : params.mediaType === "audio" ? "[Áudio]" : "[Documento]";
+          const msgText = params.caption ? `Você: ${params.caption}` : `Você: ${mediaLabel}`;
+          const { data: grupo } = await svc.from("grupos").select("id, mensagens").eq("whatsapp_group_id", params.to).maybeSingle();
+          if (grupo) {
+            await svc.from("grupos").update({
+              last_message: msgText.substring(0, 500),
+              last_message_at: new Date().toISOString(),
+              ultima_atividade: new Date().toISOString(),
+              mensagens: (grupo.mensagens || 0) + 1,
+            }).eq("id", grupo.id);
+          }
+        }
         result = r;
         break;
       }
@@ -573,6 +599,38 @@ Deno.serve(async (req) => {
         const normalized = Array.from(dedup.values());
         normalized.sort((a: any, b: any) => b.timestamp - a.timestamp);
         console.log(`[get-chats] ${chats.length} raw → ${normalized.length} deduplicated chats`);
+        
+        // Background sync: update grupos table with latest chat data
+        try {
+          const { data: allGrupos } = await svc.from("grupos").select("id, whatsapp_group_id, last_message_at").eq("instance_id", params.instanceId).not("whatsapp_group_id", "is", null);
+          if (allGrupos && allGrupos.length > 0) {
+            const grupoMap = new Map(allGrupos.map((g: any) => [g.whatsapp_group_id, g]));
+            const updates: Promise<any>[] = [];
+            for (const chat of normalized) {
+              if (!chat.isGroup) continue;
+              const grupo = grupoMap.get(chat.remoteJid);
+              if (!grupo) continue;
+              // Only update if chat has newer data
+              const chatTs = chat.timestamp ? new Date(chat.timestamp * 1000).toISOString() : null;
+              if (!chatTs) continue;
+              if (grupo.last_message_at && new Date(grupo.last_message_at) >= new Date(chatTs)) continue;
+              updates.push(
+                svc.from("grupos").update({
+                  last_message: chat.lastMessage ? chat.lastMessage.substring(0, 500) : null,
+                  last_message_at: chatTs,
+                  ultima_atividade: chatTs,
+                }).eq("id", grupo.id)
+              );
+            }
+            if (updates.length > 0) {
+              await Promise.all(updates);
+              console.log(`[get-chats] Synced ${updates.length} grupos with latest chat data`);
+            }
+          }
+        } catch (e) {
+          console.log(`[get-chats] Background sync error (non-fatal):`, e);
+        }
+        
         result = normalized;
         break;
       }
