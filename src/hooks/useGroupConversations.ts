@@ -15,7 +15,8 @@ export function useGroupConversations() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "grupos" },
-        () => {
+        (payload) => {
+          console.debug("[Realtime] grupos change:", payload.eventType);
           qc.invalidateQueries({ queryKey: ["grupos"] });
         }
       )
@@ -23,10 +24,18 @@ export function useGroupConversations() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "grupo_messages" },
         () => {
+          console.debug("[Realtime] new grupo_message");
           qc.invalidateQueries({ queryKey: ["grupos"] });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.debug("[Realtime] channel status:", status);
+        if (status === "CHANNEL_ERROR") {
+          setTimeout(() => {
+            supabase.removeChannel(channel);
+          }, 5_000);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
