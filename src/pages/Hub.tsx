@@ -27,13 +27,6 @@ interface GrupoRow {
   descricao: string;
 }
 
-const MOCK_GRUPOS: GrupoRow[] = [
-  { id: "mock-1", dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",  gestor: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: "Cliente confirmou recebimento do parecer." },
-  { id: "mock-2", dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",  gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: "Cliente pediu atualização dos honorários." },
-  { id: "mock-3", dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",  gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: "Cliente reclamou falta de posicionamento." },
-  { id: "mock-4", dataHora: "27/12/2026\n06:08", grupo: "Advogados SP",         gestor: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: "Cliente analisando proposta." },
-  { id: "mock-5", dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",      gestor: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: "4 mensagens sem retorno." },
-];
 
 const FALLBACK_SAT_STYLE: Record<string, { background: string; color: string }> = {
   "Ótimo":   { background: "#22c55e", color: "#ffffff" },
