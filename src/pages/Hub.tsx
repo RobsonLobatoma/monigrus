@@ -173,25 +173,23 @@ export default function Hub() {
   }, [teams]);
 
   const GRUPOS = useMemo((): GrupoRow[] => {
-    if (dbGrupos && dbGrupos.length > 0) {
-      return dbGrupos.map((g) => {
-        const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
-        return {
-          id: g.id,
-          dataHora: (g as any).last_message_at
-            ? format(new Date((g as any).last_message_at), "dd/MM/yyyy\nHH:mm")
-            : g.ultima_atividade ?? "—",
-          grupo: g.nome,
-          gestor: g.gestor ?? "—",
-          squad: g.team_id ? teamMap[g.team_id] ?? "—" : "—",
-          satisfacao: scoreToSatisfacao(score),
-          score,
-          status: (g.status as HubStatus) ?? "PENDENTE",
-          descricao: (g as any).last_message || "Sem mensagens",
-        };
-      });
-    }
-    return MOCK_GRUPOS;
+    if (!dbGrupos || dbGrupos.length === 0) return [];
+    return dbGrupos.map((g) => {
+      const score = g.mensagens > 0 ? Math.min(100, Math.round(g.mensagens / 3)) : 50;
+      return {
+        id: g.id,
+        dataHora: (g as any).last_message_at
+          ? format(new Date((g as any).last_message_at), "dd/MM/yyyy\nHH:mm")
+          : g.ultima_atividade ?? "—",
+        grupo: g.nome,
+        gestor: g.gestor ?? "—",
+        squad: g.team_id ? teamMap[g.team_id] ?? "—" : "—",
+        satisfacao: scoreToSatisfacao(score),
+        score,
+        status: (g.status as HubStatus) ?? "PENDENTE",
+        descricao: (g as any).last_message || "Sem mensagens",
+      };
+    });
   }, [dbGrupos, scoreToSatisfacao, teamMap]);
 
   const dateRange = useMemo(() => {
