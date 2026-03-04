@@ -1,0 +1,1 @@
+UPDATE grupos SET ativo = true WHERE ativo = false;
