@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
                 .eq("whatsapp_group_id", remoteJid)
                 .is("grupo_id", null);
 
-              // Update last_message and increment message count
+              // Update last_message, increment message count, and ensure grupo is active
               await supabase
                 .from("grupos")
                 .update({
@@ -147,6 +147,7 @@ Deno.serve(async (req) => {
                   last_message_at: receivedAt,
                   ultima_atividade: receivedAt,
                   mensagens: (grupo.mensagens || 0) + 1,
+                  ativo: true,
                 })
                 .eq("id", grupo.id);
             }
