@@ -1,24 +1,50 @@
 
 
-## Plano: Corrigir atualização em tempo real do Painel de Monitoramento
+## Plano: Corrigir Painel de Monitoramento — Ativar grupos e garantir sincronização em tempo real
 
-### Problema
-O Supabase Realtime respeita as políticas RLS. A tabela `grupos` usa políticas **restrictivas** (não permissivas), o que pode impedir que eventos Realtime sejam entregues ao cliente. Além disso, o `useGrupos` não tem polling como fallback.
+### Diagnóstico Real
 
-### Solução (duas camadas)
+O problema **não** é falta de infraestrutura. O sistema já possui:
+- Webhook (`whatsapp-webhook`) que recebe mensagens e atualiza `grupos.last_message`, `last_message_at`, `mensagens`
+- Orchestrator com `sync-groups`, `get-chats`, etc.
+- Hook `useGrupos` com polling de 15s
+- Hook `useGroupConversations` com Realtime subscriptions
+- Páginas Monitoramento, Squads e Hub já lendo da tabela `grupos`
 
-**1. Adicionar `refetchInterval` ao `useGrupos` (polling de 15s)**
+**Causa raiz:** Todos os 398 grupos no banco estão com `ativo = false` e `instance_id = NULL`. O `useGrupos` filtra por `ativo = true`, resultando em lista vazia em todos os painéis.
 
-No `src/hooks/useGrupos.ts`, adicionar `refetchInterval: 15_000` à query `useGrupos`. Isso garante que mesmo sem Realtime, os dados atualizam a cada 15 segundos.
+### Por que NÃO criar novas tabelas
 
-**2. Melhorar o hook `useGroupConversations` para escutar UPDATE explicitamente**
+O plano enviado propõe criar `monitoring_records`, `whatsapp_groups`, `whatsapp_messages` — tabelas que duplicam o que já existe em `grupos`, `grupo_messages` e `whatsapp_message_log`. Isso quebraria toda a lógica existente nos 3 painéis e no Chat. A solução correta é corrigir os dados e ajustar o fluxo de sincronização.
 
-No `src/hooks/useGroupConversations.ts`, garantir que o canal escuta eventos `UPDATE` na tabela `grupos` (que é o que o webhook e o orchestrator fazem — update de `last_message`, `last_message_at`). Já está com `event: "*"`, então isso deveria funcionar, mas vamos adicionar um `refetchInterval` como mecanismo principal e manter o Realtime como bônus.
+### Correções a implementar
+
+**1. Ativar todos os grupos existentes (SQL update)**
+- `UPDATE grupos SET ativo = true WHERE ativo = false`
+- São 398 grupos com dados reais (82 já têm `last_message_at`)
+
+**2. Corrigir `sync-groups` no orchestrator para definir `ativo = true`**
+- Quando o orchestrator sincroniza grupos, garantir que `ativo = true` e `instance_id` são preenchidos
+- Atualmente o sync pode estar criando com `ativo = false`
+
+**3. Hub.tsx — Remover fallback para mock data**
+- O Hub ainda tem `MOCK_GRUPOS` como fallback quando `dbGrupos` está vazio
+- Substituir por empty state igual ao do Monitoramento
+
+**4. Garantir que webhook atualiza `ativo` corretamente**
+- No `whatsapp-webhook`, ao receber mensagem de grupo que existe mas está `ativo = false`, reativá-lo
 
 ### Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `src/hooks/useGrupos.ts` | Adicionar `refetchInterval: 15_000` |
-| `src/hooks/useGroupConversations.ts` | Adicionar log de debug e garantir re-subscribe em caso de desconexão |
+| Migration SQL | `UPDATE grupos SET ativo = true` |
+| `supabase/functions/whatsapp-orchestrator/index.ts` | Garantir `ativo: true` no `sync-groups` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Reativar grupo ao receber mensagem |
+| `src/pages/Hub.tsx` | Remover fallback mock, usar empty state real |
+
+### Resultado esperado
+- Painéis Global, Squad e Hub mostram os 398 grupos imediatamente
+- `last_message_at` e `mensagens` já preenchidos aparecem nas colunas DATA/HORA e CONVERSAS
+- Novas mensagens atualizam via webhook + polling de 15s
 
