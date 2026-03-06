@@ -28,6 +28,14 @@ export function useGroupConversations() {
           qc.invalidateQueries({ queryKey: ["grupos"] });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "whatsapp_message_log" },
+        () => {
+          console.debug("[Realtime] new whatsapp_message_log");
+          qc.invalidateQueries({ queryKey: ["grupos"] });
+        }
+      )
       .subscribe((status) => {
         console.debug("[Realtime] channel status:", status);
         if (status === "CHANNEL_ERROR") {

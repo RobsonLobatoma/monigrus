@@ -10,11 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
-import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
+import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
 import ChatTab from "@/components/ChatTab";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Users, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -32,7 +32,7 @@ export default function Conexoes() {
   const { toast } = useToast();
   const [newInstanceName, setNewInstanceName] = useState("");
   const [qrModal, setQrModal] = useState<{ open: boolean; qrCode?: string; instanceName?: string; instanceId?: string }>({ open: false });
-  const [groupsModal, setGroupsModal] = useState<{ open: boolean; groups: any[]; instanceName?: string }>({ open: false, groups: [] });
+  
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
 
@@ -57,7 +57,6 @@ export default function Conexoes() {
   const connectInstance = useConnectInstance();
   const disconnectInstance = useDisconnectInstance();
   const getQrCode = useGetQrCode();
-  const getGroups = useGetGroups();
   const syncGroups = useSyncGroups();
   const checkStatus = useCheckStatus();
   const createTag = useCreateTag();
@@ -131,16 +130,6 @@ export default function Conexoes() {
     });
   }, [instances]);
 
-  const handleSyncGroups = (instanceId: string, tagId?: string) => {
-    syncGroups.mutate({ instanceId, tagId }, {
-      onSuccess: (data: any) => {
-        toast({ title: "Grupos sincronizados", description: `${data?.synced || 0} grupos mapeados com sucesso.` });
-      },
-      onError: (err: any) => {
-        toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
-      },
-    });
-  };
 
   const handleCreateInstance = () => {
     if (!newInstanceName.trim()) return;
@@ -196,14 +185,6 @@ export default function Conexoes() {
     });
   };
 
-  const handleGetGroups = (instanceId: string, instanceName: string) => {
-    getGroups.mutate(instanceId, {
-      onSuccess: (data: any) => {
-        setGroupsModal({ open: true, groups: data?.groups || [], instanceName });
-      },
-      onError: (e: any) => toast({ title: "Erro ao buscar grupos", description: e.message, variant: "destructive" }),
-    });
-  };
 
   const handleCreateTag = () => {
     if (!newTagName.trim()) return;
@@ -328,45 +309,12 @@ export default function Conexoes() {
                             <Button size="icon" variant="ghost" title="QR Code" onClick={() => handleGetQr(inst.id, inst.instance_name)} disabled={getQrCode.isPending}>
                               <QrCode className="w-4 h-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" title="Grupos" onClick={() => handleGetGroups(inst.id, inst.instance_name)} disabled={getGroups.isPending}>
-                              <Users className="w-4 h-4" />
-                            </Button>
                             <Button size="icon" variant="ghost" title="Verificar Status" onClick={() => checkStatus.mutate(inst.id, {
                               onSuccess: (data: any) => toast({ title: `Status: ${data?.status}`, description: `Estado na API: ${data?.state}` }),
                               onError: (e: any) => toast({ title: "Erro ao verificar", description: e.message, variant: "destructive" }),
                             })} disabled={checkStatus.isPending}>
                               <Search className="w-4 h-4" />
                             </Button>
-                            {/* Sync button with tag selector popover */}
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button size="icon" variant="ghost" title="Sincronizar Grupos" disabled={syncGroups.isPending}>
-                                  <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-56 p-2" align="end">
-                                <p className="text-xs font-medium text-muted-foreground px-2 py-1">Sincronizar com tag</p>
-                                <button
-                                  className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors"
-                                  onClick={() => handleSyncGroups(inst.id)}
-                                >
-                                  Todos (sem tag)
-                                </button>
-                                {tags?.map(tag => (
-                                  <button
-                                    key={tag.id}
-                                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors flex items-center gap-2"
-                                    onClick={() => handleSyncGroups(inst.id, tag.id)}
-                                  >
-                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.cor }} />
-                                    {tag.nome}
-                                  </button>
-                                ))}
-                                {(!tags || tags.length === 0) && (
-                                  <p className="text-xs text-muted-foreground px-2 py-1">Nenhuma tag criada</p>
-                                )}
-                              </PopoverContent>
-                            </Popover>
                             <Button size="icon" variant="ghost" title="Remover" onClick={() => {
                               stopPolling();
                               autoCheckedIdsRef.current.clear();
@@ -697,34 +645,6 @@ export default function Conexoes() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Groups Modal ── */}
-      <Dialog open={groupsModal.open} onOpenChange={(o) => setGroupsModal((s) => ({ ...s, open: o }))}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>Grupos — {groupsModal.instanceName}</DialogTitle>
-          </DialogHeader>
-          {groupsModal.groups.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">Nenhum grupo encontrado</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>ID</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groupsModal.groups.map((g: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell>{g.subject || g.name || "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{g.id || g.jid || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

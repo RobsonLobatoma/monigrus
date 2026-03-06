@@ -17,7 +17,7 @@ export function useGrupos() {
       if (error) throw error;
       return data as GrupoDB[];
     },
-    refetchInterval: 15_000,
+    refetchInterval: 5_000,
   });
 }
 

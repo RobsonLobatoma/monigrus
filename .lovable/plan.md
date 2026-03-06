@@ -1,36 +1,24 @@
 
 
-## Plano: Remover botões "Grupos" e "Sincronizar" das Instâncias + Melhorar sincronização em tempo real dos painéis
+## Plano: Corrigir atualização em tempo real do Painel de Monitoramento
 
-### Mudanças
+### Problema
+O Supabase Realtime respeita as políticas RLS. A tabela `grupos` usa políticas **restrictivas** (não permissivas), o que pode impedir que eventos Realtime sejam entregues ao cliente. Além disso, o `useGrupos` não tem polling como fallback.
 
-**1. Remover botões "Grupos" e "Sincronizar Grupos" das Instâncias Ativas**
+### Solução (duas camadas)
 
-Em `src/pages/Conexoes.tsx`:
-- Remover o botão "Grupos" (ícone `Users`, linhas 331-333)
-- Remover o `Popover` de "Sincronizar Grupos" (ícone `RefreshCw`, linhas 340-369)
-- Remover o modal de grupos (`groupsModal` state e Dialog)
-- Remover imports/hooks não utilizados: `useGetGroups`, `useSyncGroups`, `getGroups`, `syncGroups`, `groupsModal`, `handleGetGroups`, `handleSyncGroups`
-- Manter a sincronização automática ao conectar (linhas 86-97 e 113-125) pois isso garante que grupos são mapeados na conexão
+**1. Adicionar `refetchInterval` ao `useGrupos` (polling de 15s)**
 
-**2. Melhorar polling do `useGrupos` de 15s para 5s**
+No `src/hooks/useGrupos.ts`, adicionar `refetchInterval: 15_000` à query `useGrupos`. Isso garante que mesmo sem Realtime, os dados atualizam a cada 15 segundos.
 
-Em `src/hooks/useGrupos.ts`, reduzir `refetchInterval` de 15000 para 5000 para paridade com o chat (que usa 10s para mensagens).
+**2. Melhorar o hook `useGroupConversations` para escutar UPDATE explicitamente**
 
-**3. Ampliar o Realtime em `useGroupConversations` para escutar `whatsapp_message_log`**
-
-Em `src/hooks/useGroupConversations.ts`, adicionar subscription na tabela `whatsapp_message_log` para capturar mensagens inbound imediatamente (o webhook insere lá antes de atualizar `grupos`), garantindo invalidação mais rápida.
+No `src/hooks/useGroupConversations.ts`, garantir que o canal escuta eventos `UPDATE` na tabela `grupos` (que é o que o webhook e o orchestrator fazem — update de `last_message`, `last_message_at`). Já está com `event: "*"`, então isso deveria funcionar, mas vamos adicionar um `refetchInterval` como mecanismo principal e manter o Realtime como bônus.
 
 ### Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| `src/pages/Conexoes.tsx` | Remover botão Grupos, botão Sincronizar, modal de grupos, e código associado |
-| `src/hooks/useGrupos.ts` | `refetchInterval: 5_000` |
-| `src/hooks/useGroupConversations.ts` | Adicionar subscription em `whatsapp_message_log` |
-
-### Preservação
-- Layout, sidebar, menus e todas as outras páginas permanecem intactos
-- A sincronização automática ao conectar via QR Code é mantida
-- Mock data em `Monitoramento.tsx` permanece como fallback
+| `src/hooks/useGrupos.ts` | Adicionar `refetchInterval: 15_000` |
+| `src/hooks/useGroupConversations.ts` | Adicionar log de debug e garantir re-subscribe em caso de desconexão |
 
