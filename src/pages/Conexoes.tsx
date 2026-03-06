@@ -130,16 +130,6 @@ export default function Conexoes() {
     });
   }, [instances]);
 
-  const handleSyncGroups = (instanceId: string, tagId?: string) => {
-    syncGroups.mutate({ instanceId, tagId }, {
-      onSuccess: (data: any) => {
-        toast({ title: "Grupos sincronizados", description: `${data?.synced || 0} grupos mapeados com sucesso.` });
-      },
-      onError: (err: any) => {
-        toast({ title: "Erro ao sincronizar", description: err.message, variant: "destructive" });
-      },
-    });
-  };
 
   const handleCreateInstance = () => {
     if (!newInstanceName.trim()) return;
