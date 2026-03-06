@@ -309,9 +309,6 @@ export default function Conexoes() {
                             <Button size="icon" variant="ghost" title="QR Code" onClick={() => handleGetQr(inst.id, inst.instance_name)} disabled={getQrCode.isPending}>
                               <QrCode className="w-4 h-4" />
                             </Button>
-                            <Button size="icon" variant="ghost" title="Grupos" onClick={() => handleGetGroups(inst.id, inst.instance_name)} disabled={getGroups.isPending}>
-                              <Users className="w-4 h-4" />
-                            </Button>
                             <Button size="icon" variant="ghost" title="Verificar Status" onClick={() => checkStatus.mutate(inst.id, {
                               onSuccess: (data: any) => toast({ title: `Status: ${data?.status}`, description: `Estado na API: ${data?.state}` }),
                               onError: (e: any) => toast({ title: "Erro ao verificar", description: e.message, variant: "destructive" }),
