@@ -315,36 +315,6 @@ export default function Conexoes() {
                             })} disabled={checkStatus.isPending}>
                               <Search className="w-4 h-4" />
                             </Button>
-                            {/* Sync button with tag selector popover */}
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button size="icon" variant="ghost" title="Sincronizar Grupos" disabled={syncGroups.isPending}>
-                                  <RefreshCw className={`w-4 h-4 ${syncGroups.isPending ? "animate-spin" : ""}`} />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-56 p-2" align="end">
-                                <p className="text-xs font-medium text-muted-foreground px-2 py-1">Sincronizar com tag</p>
-                                <button
-                                  className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors"
-                                  onClick={() => handleSyncGroups(inst.id)}
-                                >
-                                  Todos (sem tag)
-                                </button>
-                                {tags?.map(tag => (
-                                  <button
-                                    key={tag.id}
-                                    className="w-full text-left px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors flex items-center gap-2"
-                                    onClick={() => handleSyncGroups(inst.id, tag.id)}
-                                  >
-                                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: tag.cor }} />
-                                    {tag.nome}
-                                  </button>
-                                ))}
-                                {(!tags || tags.length === 0) && (
-                                  <p className="text-xs text-muted-foreground px-2 py-1">Nenhuma tag criada</p>
-                                )}
-                              </PopoverContent>
-                            </Popover>
                             <Button size="icon" variant="ghost" title="Remover" onClick={() => {
                               stopPolling();
                               autoCheckedIdsRef.current.clear();
