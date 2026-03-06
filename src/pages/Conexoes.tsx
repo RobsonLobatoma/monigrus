@@ -185,14 +185,6 @@ export default function Conexoes() {
     });
   };
 
-  const handleGetGroups = (instanceId: string, instanceName: string) => {
-    getGroups.mutate(instanceId, {
-      onSuccess: (data: any) => {
-        setGroupsModal({ open: true, groups: data?.groups || [], instanceName });
-      },
-      onError: (e: any) => toast({ title: "Erro ao buscar grupos", description: e.message, variant: "destructive" }),
-    });
-  };
 
   const handleCreateTag = () => {
     if (!newTagName.trim()) return;
