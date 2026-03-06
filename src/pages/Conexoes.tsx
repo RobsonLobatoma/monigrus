@@ -57,7 +57,6 @@ export default function Conexoes() {
   const connectInstance = useConnectInstance();
   const disconnectInstance = useDisconnectInstance();
   const getQrCode = useGetQrCode();
-  const getGroups = useGetGroups();
   const syncGroups = useSyncGroups();
   const checkStatus = useCheckStatus();
   const createTag = useCreateTag();
