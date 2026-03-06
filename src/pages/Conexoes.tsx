@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
-import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useGetGroups, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
+import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
 import ChatTab from "@/components/ChatTab";
