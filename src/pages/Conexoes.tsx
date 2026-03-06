@@ -14,7 +14,7 @@ import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectI
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
 import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
 import ChatTab from "@/components/ChatTab";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
