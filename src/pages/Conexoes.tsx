@@ -645,34 +645,6 @@ export default function Conexoes() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Groups Modal ── */}
-      <Dialog open={groupsModal.open} onOpenChange={(o) => setGroupsModal((s) => ({ ...s, open: o }))}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-auto">
-          <DialogHeader>
-            <DialogTitle>Grupos — {groupsModal.instanceName}</DialogTitle>
-          </DialogHeader>
-          {groupsModal.groups.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">Nenhum grupo encontrado</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>ID</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groupsModal.groups.map((g: any, i: number) => (
-                  <TableRow key={i}>
-                    <TableCell>{g.subject || g.name || "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{g.id || g.jid || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
