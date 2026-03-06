@@ -32,7 +32,7 @@ export default function Conexoes() {
   const { toast } = useToast();
   const [newInstanceName, setNewInstanceName] = useState("");
   const [qrModal, setQrModal] = useState<{ open: boolean; qrCode?: string; instanceName?: string; instanceId?: string }>({ open: false });
-  const [groupsModal, setGroupsModal] = useState<{ open: boolean; groups: any[]; instanceName?: string }>({ open: false, groups: [] });
+  
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
 
