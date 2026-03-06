@@ -148,6 +148,7 @@ Deno.serve(async (req) => {
                   ultima_atividade: receivedAt,
                   mensagens: (grupo.mensagens || 0) + 1,
                   ativo: true,
+                  instance_id: instanceId,
                 })
                 .eq("id", grupo.id);
             }
