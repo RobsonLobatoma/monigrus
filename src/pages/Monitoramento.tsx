@@ -177,7 +177,6 @@ export default function Monitoramento() {
           score,
           status: g.status ?? "PENDENTE",
           descricao: (g as any).last_message || "Sem mensagens",
-          tagId: g.tag_id ?? null,
         };
       });
     }
