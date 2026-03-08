@@ -357,7 +357,6 @@ export default function Monitoramento() {
               <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
               <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
               <th style={thStyle}>STATUS</th>
-              <th style={thStyle}>TAG</th>
               <th style={thStyle}>CONVERSAS</th>
             </tr>
           </thead>
