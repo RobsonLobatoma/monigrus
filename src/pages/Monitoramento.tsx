@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Shield, Search, CalendarIcon, X, Filter } from "lucide-react";
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { useGrupos, useUpdateGrupo } from "@/hooks/useGrupos";
+import { useGrupos } from "@/hooks/useGrupos";
 import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useTeams } from "@/hooks/useTeams";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
