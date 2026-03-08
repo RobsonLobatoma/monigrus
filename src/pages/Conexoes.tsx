@@ -37,7 +37,7 @@ export default function Conexoes() {
   const { data: instances, isLoading: loadingInstances } = useWhatsAppInstances();
   const { data: messageLogs, isLoading: loadingLogs } = useMessageLog();
   const { data: webhookLogs, isLoading: loadingWebhooks } = useWebhooksLog();
-  const { data: tags, isLoading: loadingTags } = useTags();
+  
 
   const activateProvider = useActivateProvider();
   const updateConfig = useUpdateProviderConfig();
