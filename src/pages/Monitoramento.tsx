@@ -447,29 +447,6 @@ export default function Monitoramento() {
                       )}
                     </td>
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <Select
-                        value={row.tagId || "none"}
-                        onValueChange={(val) => {
-                          updateGrupo.mutate({ id: row.id, tag_id: val === "none" ? null : val });
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs w-[110px]">
-                          <SelectValue placeholder="Tag" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhuma</SelectItem>
-                          {tags?.map(tag => (
-                            <SelectItem key={tag.id} value={tag.id}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.cor }} />
-                                {tag.nome}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {renderDescricao(row.descricao)}
                       </p>
