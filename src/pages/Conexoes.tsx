@@ -32,12 +32,6 @@ export default function Conexoes() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
 
-  // Tag state
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
-  const [editingTagId, setEditingTagId] = useState<string | null>(null);
-  const [editTagName, setEditTagName] = useState("");
-  const [editTagColor, setEditTagColor] = useState("");
 
   const { data: providers, isLoading: loadingProviders } = useWhatsAppProviders();
   const { data: instances, isLoading: loadingInstances } = useWhatsAppInstances();
