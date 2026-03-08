@@ -173,34 +173,6 @@ export default function Conexoes() {
   };
 
 
-  const handleCreateTag = () => {
-    if (!newTagName.trim()) return;
-    createTag.mutate({ nome: newTagName.trim(), cor: newTagColor }, {
-      onSuccess: () => {
-        toast({ title: "Tag criada" });
-        setNewTagName("");
-        setNewTagColor(TAG_COLORS[0]);
-      },
-      onError: (e: any) => toast({ title: "Erro ao criar tag", description: e.message, variant: "destructive" }),
-    });
-  };
-
-  const handleUpdateTag = (id: string) => {
-    updateTag.mutate({ id, nome: editTagName, cor: editTagColor }, {
-      onSuccess: () => {
-        toast({ title: "Tag atualizada" });
-        setEditingTagId(null);
-      },
-      onError: (e: any) => toast({ title: "Erro ao atualizar", description: e.message, variant: "destructive" }),
-    });
-  };
-
-  const handleDeleteTag = (id: string) => {
-    deleteTag.mutate(id, {
-      onSuccess: () => toast({ title: "Tag excluída" }),
-      onError: (e: any) => toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" }),
-    });
-  };
 
   return (
     <div className="space-y-6">
