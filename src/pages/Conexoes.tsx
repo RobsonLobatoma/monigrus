@@ -23,10 +23,6 @@ const statusColors: Record<string, string> = {
   error: "bg-destructive/20 text-destructive border-destructive/30",
 };
 
-const TAG_COLORS = [
-  "#6366f1", "#ec4899", "#f97316", "#22c55e", "#3b82f6",
-  "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#64748b",
-];
 
 export default function Conexoes() {
   const { toast } = useToast();
