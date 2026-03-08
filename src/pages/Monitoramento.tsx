@@ -28,7 +28,7 @@ interface MonitoringRow {
   score: number;
   status: StatusType;
   descricao: string;
-  tagId: string | null;
+  
 }
 
 const mockData: MonitoringRow[] = [
