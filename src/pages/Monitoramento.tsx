@@ -337,7 +337,7 @@ export default function Monitoramento() {
       {/* Table card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
-          <colgroup>
+           <colgroup>
             <col style={{ width: "90px" }} />
             <col style={{ width: "16%" }} />
             <col style={{ width: "12%" }} />
@@ -345,7 +345,6 @@ export default function Monitoramento() {
             <col style={{ width: "110px" }} />
             <col style={{ width: "100px" }} />
             <col style={{ width: "80px" }} />
-            <col style={{ width: "100px" }} />
             <col />
           </colgroup>
 
