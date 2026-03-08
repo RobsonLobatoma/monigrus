@@ -373,7 +373,7 @@ export default function Monitoramento() {
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   Nenhum resultado encontrado.
                 </td>
               </tr>
