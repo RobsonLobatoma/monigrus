@@ -186,7 +186,7 @@ export default function Conexoes() {
           <TabsTrigger value="instances">Instâncias</TabsTrigger>
           <TabsTrigger value="chat"><MessageSquare className="w-4 h-4 mr-1" />Chat</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
+          
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
         </TabsList>
