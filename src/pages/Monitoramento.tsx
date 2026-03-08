@@ -99,8 +99,6 @@ export default function Monitoramento() {
   useGroupConversations();
   const { data: teams } = useTeams();
   const { role, loading: roleLoading } = useCurrentUserRole();
-  const { data: tags } = useTags();
-  const updateGrupo = useUpdateGrupo();
   const [search, setSearch] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
