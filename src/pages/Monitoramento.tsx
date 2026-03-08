@@ -364,7 +364,7 @@ export default function Monitoramento() {
           <tbody>
             {!hasRealData ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "16px", fontWeight: 600 }}>Nenhum grupo sincronizado</span>
                     <span>Vá para a página de <a href="/conexoes" style={{ color: "hsl(var(--primary))", textDecoration: "underline" }}>Conexões</a> para conectar uma instância e sincronizar grupos do WhatsApp.</span>
