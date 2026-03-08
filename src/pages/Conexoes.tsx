@@ -49,9 +49,6 @@ export default function Conexoes() {
   const getQrCode = useGetQrCode();
   const syncGroups = useSyncGroups();
   const checkStatus = useCheckStatus();
-  const createTag = useCreateTag();
-  const updateTag = useUpdateTag();
-  const deleteTag = useDeleteTag();
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
