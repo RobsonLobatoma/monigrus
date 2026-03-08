@@ -1,44 +1,24 @@
 
 
-## Plano: Limpar grupos incorretos do banco e remover coluna TAG dos painéis
+## Plano: Corrigir atualização em tempo real do Painel de Monitoramento
 
-### 1. Limpar todos os grupos do banco de dados
+### Problema
+O Supabase Realtime respeita as políticas RLS. A tabela `grupos` usa políticas **restrictivas** (não permissivas), o que pode impedir que eventos Realtime sejam entregues ao cliente. Além disso, o `useGrupos` não tem polling como fallback.
 
-Usar o insert tool (data operation) para deletar todos os registros da tabela `grupos`:
+### Solução (duas camadas)
 
-```sql
-DELETE FROM grupos;
-```
+**1. Adicionar `refetchInterval` ao `useGrupos` (polling de 15s)**
 
-Isso remove todos os 398 grupos incorretos. Os grupos corretos serão carregados automaticamente quando o webhook receber mensagens da instância real, ou via sincronização na página Conexões.
+No `src/hooks/useGrupos.ts`, adicionar `refetchInterval: 15_000` à query `useGrupos`. Isso garante que mesmo sem Realtime, os dados atualizam a cada 15 segundos.
 
-### 2. Remover coluna TAG do Monitoramento (Global)
+**2. Melhorar o hook `useGroupConversations` para escutar UPDATE explicitamente**
 
-Em `src/pages/Monitoramento.tsx`:
-- Remover import de `useTags`
-- Remover `tagId` do interface `MonitoringRow` e do mapeamento de dados
-- Remover `useUpdateGrupo` e `updateGrupo`
-- Remover o `<th>TAG</th>` do header da tabela
-- Remover o `<td>` com o `<Select>` de tags (linhas 454-476)
-- Reduzir `colSpan` de 9 para 8 nos empty states
-- Ajustar `<colgroup>` removendo a coluna extra
-
-### 3. Remover coluna TAG do Hub
-
-Em `src/pages/Hub.tsx`: a tabela do Hub já não tem coluna TAG — nenhuma mudança necessária.
-
-### 4. Remover coluna TAG do Squads
-
-Em `src/pages/Squads.tsx`: a tabela do Squads já não tem coluna TAG — nenhuma mudança necessária.
-
-### 5. Limpar hook useTags (manter arquivo)
-
-O arquivo `src/hooks/useTags.ts` e a aba Tags em Conexões continuam existindo para uso futuro, apenas removemos a referência no Monitoramento.
+No `src/hooks/useGroupConversations.ts`, garantir que o canal escuta eventos `UPDATE` na tabela `grupos` (que é o que o webhook e o orchestrator fazem — update de `last_message`, `last_message_at`). Já está com `event: "*"`, então isso deveria funcionar, mas vamos adicionar um `refetchInterval` como mecanismo principal e manter o Realtime como bônus.
 
 ### Arquivos modificados
 
 | Arquivo | Mudança |
 |---------|---------|
-| Banco (DELETE) | `DELETE FROM grupos` — remover todos os grupos incorretos |
-| `src/pages/Monitoramento.tsx` | Remover coluna TAG, imports de `useTags`/`useUpdateGrupo`, campo `tagId` |
+| `src/hooks/useGrupos.ts` | Adicionar `refetchInterval: 15_000` |
+| `src/hooks/useGroupConversations.ts` | Adicionar log de debug e garantir re-subscribe em caso de desconexão |
 

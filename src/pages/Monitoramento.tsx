@@ -2,12 +2,12 @@ import { useState, useMemo } from "react";
 import { Shield, Search, CalendarIcon, X, Filter } from "lucide-react";
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { useGrupos, useUpdateGrupo } from "@/hooks/useGrupos";
+import { useGrupos } from "@/hooks/useGrupos";
 import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useTeams } from "@/hooks/useTeams";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
-import { useTags } from "@/hooks/useTags";
+
 import { Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -28,17 +28,17 @@ interface MonitoringRow {
   score: number;
   status: StatusType;
   descricao: string;
-  tagId: string | null;
+  
 }
 
 const mockData: MonitoringRow[] = [
-  { id: "mock-1", dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",    gestorTrafego: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: "Cliente confirmou recebimento do parecer.", tagId: null },
-  { id: "mock-2", dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",    gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: "Cliente pediu atualização dos honorários.", tagId: null },
-  { id: "mock-3", dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",    gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: "Cliente reclamou falta de posicionamento.", tagId: null },
-  { id: "mock-4", dataHora: "27/12/2026\n06:00", grupo: "Advogados SP",           gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: "Cliente analisando proposta.", tagId: null },
-  { id: "mock-5", dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",        gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: "4 mensagens sem retorno.", tagId: null },
-  { id: "mock-6", dataHora: "27/12/2026\n06:30", grupo: "Lima & Ferreira",        gestorTrafego: "Ana Costa",   squad: "SQT1", satisfacao: "Ótimo",   score: 91, status: "RESOLVIDO", descricao: "Acordo firmado com sucesso.", tagId: null },
-  { id: "mock-7", dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar.", tagId: null },
+  { id: "mock-1", dataHora: "27/12/2026\n05:15", grupo: "Dr. Silva Advocacia",    gestorTrafego: "Seu Madruga", squad: "SQT1", satisfacao: "Ótimo",   score: 98, status: "RESOLVIDO", descricao: "Cliente confirmou recebimento do parecer." },
+  { id: "mock-2", dataHora: "27/12/2026\n05:30", grupo: "Mendes & Associados",    gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 62, status: "PENDENTE",  descricao: "Cliente pediu atualização dos honorários." },
+  { id: "mock-3", dataHora: "27/12/2026\n05:45", grupo: "Dra. Paula Oliveira",    gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 28, status: "CRÍTICO",   descricao: "Cliente reclamou falta de posicionamento." },
+  { id: "mock-4", dataHora: "27/12/2026\n06:00", grupo: "Advogados SP",           gestorTrafego: "Karla",       squad: "SQT2", satisfacao: "Regular", score: 58, status: "PENDENTE",  descricao: "Cliente analisando proposta." },
+  { id: "mock-5", dataHora: "27/12/2026\n06:15", grupo: "Santos Jurídica",        gestorTrafego: "João Lima",   squad: "SQT3", satisfacao: "Ruim",    score: 22, status: "CRÍTICO",   descricao: "4 mensagens sem retorno." },
+  { id: "mock-6", dataHora: "27/12/2026\n06:30", grupo: "Lima & Ferreira",        gestorTrafego: "Ana Costa",   squad: "SQT1", satisfacao: "Ótimo",   score: 91, status: "RESOLVIDO", descricao: "Acordo firmado com sucesso." },
+  { id: "mock-7", dataHora: "27/12/2026\n06:45", grupo: "Carvalho Consultoria",   gestorTrafego: "Seu Madruga", squad: "SQT2", satisfacao: "Regular", score: 55, status: "PENDENTE",  descricao: "Aguardando documentação complementar." },
 ];
 
 const FALLBACK_SAT_STYLE: Record<string, { background: string; color: string }> = {
@@ -99,8 +99,6 @@ export default function Monitoramento() {
   useGroupConversations();
   const { data: teams } = useTeams();
   const { role, loading: roleLoading } = useCurrentUserRole();
-  const { data: tags } = useTags();
-  const updateGrupo = useUpdateGrupo();
   const [search, setSearch] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "7d" | "14d" | "30d" | "custom">("all");
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>();
@@ -179,7 +177,6 @@ export default function Monitoramento() {
           score,
           status: g.status ?? "PENDENTE",
           descricao: (g as any).last_message || "Sem mensagens",
-          tagId: g.tag_id ?? null,
         };
       });
     }
@@ -340,7 +337,7 @@ export default function Monitoramento() {
       {/* Table card */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
-          <colgroup>
+           <colgroup>
             <col style={{ width: "90px" }} />
             <col style={{ width: "16%" }} />
             <col style={{ width: "12%" }} />
@@ -348,7 +345,6 @@ export default function Monitoramento() {
             <col style={{ width: "110px" }} />
             <col style={{ width: "100px" }} />
             <col style={{ width: "80px" }} />
-            <col style={{ width: "100px" }} />
             <col />
           </colgroup>
 
@@ -361,7 +357,6 @@ export default function Monitoramento() {
               <th style={{ ...thStyle, textAlign: "center" }}>SATISFAÇÃO</th>
               <th style={{ ...thStyle, textAlign: "center" }}>SCORE</th>
               <th style={thStyle}>STATUS</th>
-              <th style={thStyle}>TAG</th>
               <th style={thStyle}>CONVERSAS</th>
             </tr>
           </thead>
@@ -369,7 +364,7 @@ export default function Monitoramento() {
           <tbody>
             {!hasRealData ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "16px", fontWeight: 600 }}>Nenhum grupo sincronizado</span>
                     <span>Vá para a página de <a href="/conexoes" style={{ color: "hsl(var(--primary))", textDecoration: "underline" }}>Conexões</a> para conectar uma instância e sincronizar grupos do WhatsApp.</span>
@@ -378,7 +373,7 @@ export default function Monitoramento() {
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   Nenhum resultado encontrado.
                 </td>
               </tr>
@@ -450,29 +445,6 @@ export default function Monitoramento() {
                           {row.status}
                         </span>
                       )}
-                    </td>
-                    <td style={{ ...tdBase, borderBottom: borderStyle }}>
-                      <Select
-                        value={row.tagId || "none"}
-                        onValueChange={(val) => {
-                          updateGrupo.mutate({ id: row.id, tag_id: val === "none" ? null : val });
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs w-[110px]">
-                          <SelectValue placeholder="Tag" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhuma</SelectItem>
-                          {tags?.map(tag => (
-                            <SelectItem key={tag.id} value={tag.id}>
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tag.cor }} />
-                                {tag.nome}
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </td>
                     <td style={{ ...tdBase, borderBottom: borderStyle }}>
                       <p style={{ fontSize: "12px", color: "hsl(var(--muted-foreground))", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
