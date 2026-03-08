@@ -12,9 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useWhatsAppProviders, useActivateProvider, useUpdateProviderConfig, useHealthCheck } from "@/hooks/useWhatsAppProviders";
 import { useWhatsAppInstances, useCreateInstance, useDeleteInstance, useConnectInstance, useDisconnectInstance, useGetQrCode, useSyncGroups, useCheckStatus } from "@/hooks/useWhatsAppInstances";
 import { useMessageLog, useWebhooksLog } from "@/hooks/useWhatsAppMessages";
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from "@/hooks/useTags";
+
 import ChatTab from "@/components/ChatTab";
-import { Plus, Trash2, Plug, Unplug, QrCode, Heart, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, Pencil, Tag, Check, X, MessageSquare } from "lucide-react";
+import { Plus, Trash2, Plug, Unplug, QrCode, Heart, RefreshCw, Wifi, WifiOff, AlertCircle, Loader2, Search, MessageSquare } from "lucide-react";
 
 const statusColors: Record<string, string> = {
   connected: "bg-green-500/20 text-green-400 border-green-500/30",
@@ -23,10 +23,6 @@ const statusColors: Record<string, string> = {
   error: "bg-destructive/20 text-destructive border-destructive/30",
 };
 
-const TAG_COLORS = [
-  "#6366f1", "#ec4899", "#f97316", "#22c55e", "#3b82f6",
-  "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#64748b",
-];
 
 export default function Conexoes() {
   const { toast } = useToast();
@@ -36,18 +32,12 @@ export default function Conexoes() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollingCountRef = useRef(0);
 
-  // Tag state
-  const [newTagName, setNewTagName] = useState("");
-  const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
-  const [editingTagId, setEditingTagId] = useState<string | null>(null);
-  const [editTagName, setEditTagName] = useState("");
-  const [editTagColor, setEditTagColor] = useState("");
 
   const { data: providers, isLoading: loadingProviders } = useWhatsAppProviders();
   const { data: instances, isLoading: loadingInstances } = useWhatsAppInstances();
   const { data: messageLogs, isLoading: loadingLogs } = useMessageLog();
   const { data: webhookLogs, isLoading: loadingWebhooks } = useWebhooksLog();
-  const { data: tags, isLoading: loadingTags } = useTags();
+  
 
   const activateProvider = useActivateProvider();
   const updateConfig = useUpdateProviderConfig();
@@ -59,9 +49,6 @@ export default function Conexoes() {
   const getQrCode = useGetQrCode();
   const syncGroups = useSyncGroups();
   const checkStatus = useCheckStatus();
-  const createTag = useCreateTag();
-  const updateTag = useUpdateTag();
-  const deleteTag = useDeleteTag();
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -186,34 +173,6 @@ export default function Conexoes() {
   };
 
 
-  const handleCreateTag = () => {
-    if (!newTagName.trim()) return;
-    createTag.mutate({ nome: newTagName.trim(), cor: newTagColor }, {
-      onSuccess: () => {
-        toast({ title: "Tag criada" });
-        setNewTagName("");
-        setNewTagColor(TAG_COLORS[0]);
-      },
-      onError: (e: any) => toast({ title: "Erro ao criar tag", description: e.message, variant: "destructive" }),
-    });
-  };
-
-  const handleUpdateTag = (id: string) => {
-    updateTag.mutate({ id, nome: editTagName, cor: editTagColor }, {
-      onSuccess: () => {
-        toast({ title: "Tag atualizada" });
-        setEditingTagId(null);
-      },
-      onError: (e: any) => toast({ title: "Erro ao atualizar", description: e.message, variant: "destructive" }),
-    });
-  };
-
-  const handleDeleteTag = (id: string) => {
-    deleteTag.mutate(id, {
-      onSuccess: () => toast({ title: "Tag excluída" }),
-      onError: (e: any) => toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" }),
-    });
-  };
 
   return (
     <div className="space-y-6">
@@ -227,7 +186,7 @@ export default function Conexoes() {
           <TabsTrigger value="instances">Instâncias</TabsTrigger>
           <TabsTrigger value="chat"><MessageSquare className="w-4 h-4 mr-1" />Chat</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
+          
           <TabsTrigger value="logs">Logs</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
         </TabsList>
@@ -420,117 +379,6 @@ export default function Conexoes() {
           </Card>
         </TabsContent>
 
-        {/* ── Tags Tab ── */}
-        <TabsContent value="tags" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Tag className="w-5 h-5" /> Gerenciar Tags</CardTitle>
-              <CardDescription>Crie tags para organizar seus grupos por categorias</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Create tag form */}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Nome da tag"
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
-                  className="max-w-xs"
-                />
-                <div className="flex gap-1">
-                  {TAG_COLORS.map(c => (
-                    <button
-                      key={c}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform ${newTagColor === c ? "border-foreground scale-110" : "border-transparent"}`}
-                      style={{ backgroundColor: c }}
-                      onClick={() => setNewTagColor(c)}
-                    />
-                  ))}
-                </div>
-                <Button onClick={handleCreateTag} disabled={createTag.isPending || !newTagName.trim()}>
-                  {createTag.isPending ? <Loader2 className="animate-spin w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  Criar
-                </Button>
-              </div>
-
-              {/* Tags list */}
-              {loadingTags ? (
-                <div className="flex items-center justify-center py-8"><Loader2 className="animate-spin" /></div>
-              ) : !tags?.length ? (
-                <p className="text-muted-foreground text-center py-8">Nenhuma tag criada</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">Cor</TableHead>
-                      <TableHead>Nome</TableHead>
-                      <TableHead className="text-right">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tags.map(tag => (
-                      <TableRow key={tag.id}>
-                        <TableCell>
-                          {editingTagId === tag.id ? (
-                            <div className="flex gap-1">
-                              {TAG_COLORS.map(c => (
-                                <button
-                                  key={c}
-                                  className={`w-5 h-5 rounded-full border-2 transition-transform ${editTagColor === c ? "border-foreground scale-110" : "border-transparent"}`}
-                                  style={{ backgroundColor: c }}
-                                  onClick={() => setEditTagColor(c)}
-                                />
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="w-5 h-5 rounded-full inline-block" style={{ backgroundColor: tag.cor }} />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {editingTagId === tag.id ? (
-                            <Input
-                              value={editTagName}
-                              onChange={(e) => setEditTagName(e.target.value)}
-                              onKeyDown={(e) => e.key === "Enter" && handleUpdateTag(tag.id)}
-                              className="max-w-xs h-8"
-                            />
-                          ) : (
-                            <span className="font-medium">{tag.nome}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {editingTagId === tag.id ? (
-                            <div className="flex justify-end gap-1">
-                              <Button size="icon" variant="ghost" onClick={() => handleUpdateTag(tag.id)} disabled={updateTag.isPending}>
-                                <Check className="w-4 h-4 text-green-500" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => setEditingTagId(null)}>
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="flex justify-end gap-1">
-                              <Button size="icon" variant="ghost" onClick={() => {
-                                setEditingTagId(tag.id);
-                                setEditTagName(tag.nome);
-                                setEditTagColor(tag.cor);
-                              }}>
-                                <Pencil className="w-4 h-4" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => handleDeleteTag(tag.id)} disabled={deleteTag.isPending}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
-                            </div>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* ── Logs Tab ── */}
         <TabsContent value="logs">
