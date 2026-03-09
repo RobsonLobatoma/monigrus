@@ -71,27 +71,14 @@ export default function ChatTab() {
     setMediaCaption("");
   }, [mediaUrl, selectedInstanceId, selectedChat, mediaType, mediaCaption, sendMedia, toast]);
 
-  const handleSendMedia = () => {
-    if (!mediaUrl.trim() || !selectedInstanceId || !selectedChat) return;
-    sendMedia.mutate(
-      { instanceId: selectedInstanceId, to: selectedChat, mediaUrl: mediaUrl.trim(), mediaType, caption: mediaCaption },
-      {
-        onError: (e: any) => toast({ title: "Erro ao enviar mídia", description: e.message, variant: "destructive" }),
-      }
-    );
-    setMediaDialog(false);
-    setMediaUrl("");
-    setMediaCaption("");
-  };
-
-  const handleDelete = (msg: any) => {
+  const handleDelete = useCallback((msg: any) => {
     deleteMessage.mutate(
       { instanceId: selectedInstanceId, messageId: msg.id, remoteJid: selectedChat, fromMe: msg.fromMe },
       { onError: (e: any) => toast({ title: "Erro ao apagar", description: e.message, variant: "destructive" }) }
     );
-  };
+  }, [selectedInstanceId, selectedChat, deleteMessage, toast]);
 
-  const handleEdit = () => {
+  const handleEdit = useCallback(() => {
     if (!editingMsg || !editText.trim()) return;
     editMessage.mutate(
       { instanceId: selectedInstanceId, messageId: editingMsg.id, remoteJid: selectedChat, text: editText.trim(), fromMe: editingMsg.fromMe },
@@ -100,7 +87,12 @@ export default function ChatTab() {
         onError: (e: any) => toast({ title: "Erro ao editar", description: e.message, variant: "destructive" }),
       }
     );
-  };
+  }, [editingMsg, editText, selectedInstanceId, selectedChat, editMessage, toast]);
+
+  const handleEditStart = useCallback((msg: any) => {
+    setEditingMsg(msg);
+    setEditText(msg.text);
+  }, []);
 
   return (
     <div className="space-y-4">
