@@ -13,8 +13,9 @@ const invoke = async (action: string, params: Record<string, any> = {}) => {
 export function useMessageLog(instanceId?: string) {
   return useQuery({
     queryKey: ["whatsapp-message-log", instanceId],
-    queryFn: () => invoke("get-message-log", { instanceId, limit: 200 }),
-    staleTime: 15_000,
+    queryFn: () => invoke("get-message-log", { instanceId, limit: 50 }),
+    staleTime: 60_000,
+    enabled: !!instanceId,
   });
 }
 
