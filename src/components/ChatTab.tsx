@@ -24,7 +24,6 @@ export default function ChatTab() {
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaType, setMediaType] = useState("image");
   const [mediaCaption, setMediaCaption] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: instances } = useWhatsAppInstances();
   const connectedInstances = (instances || []).filter((i: any) => i.status === "connected");
