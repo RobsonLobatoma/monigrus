@@ -33,8 +33,8 @@ export function useChats(instanceId?: string) {
     queryKey: ["whatsapp-chats", instanceId],
     queryFn: () => invoke("get-chats", { instanceId }),
     enabled: !!instanceId,
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 120_000, // 2 minutos
+    refetchInterval: 60_000, // 1 minuto
   });
 }
 
