@@ -1,37 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import ContactAvatar from "@/components/chat/ContactAvatar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useChats, useChatMessages, useSendMessage, useSendMedia, useDeleteMessage, useEditMessage } from "@/hooks/useWhatsAppMessages";
 import { useWhatsAppInstances } from "@/hooks/useWhatsAppInstances";
 import { useToast } from "@/hooks/use-toast";
-import { Send, MessageSquare, Search, Loader2, Users, Paperclip, MoreVertical, Pencil, Trash2, Image, Video, FileText, Music } from "lucide-react";
-
-function formatTime(ts: number) {
-  if (!ts) return "";
-  const d = new Date(ts * 1000);
-  const now = new Date();
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function getInitials(name: string) {
-  return name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() || "?";
-}
-
-function isGroup(jid: string) {
-  return jid.includes("@g.us");
-}
-
-// MediaRenderer moved to src/components/chat/MediaRenderer.tsx
-import MediaRenderer from "@/components/chat/MediaRenderer";
+import { Send, MessageSquare, Loader2, Paperclip, Image, Video, FileText, Music } from "lucide-react";
+import ChatList from "@/components/chat/ChatList";
+import ChatMessages from "@/components/chat/ChatMessages";
 
 export default function ChatTab() {
   const { toast } = useToast();
