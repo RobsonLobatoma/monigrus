@@ -41,10 +41,10 @@ export function useChats(instanceId?: string) {
 export function useChatMessages(instanceId?: string, remoteJid?: string) {
   return useQuery({
     queryKey: ["whatsapp-chat-messages", instanceId, remoteJid],
-    queryFn: () => invoke("find-messages", { instanceId, remoteJid, limit: 100 }),
+    queryFn: () => invoke("find-messages", { instanceId, remoteJid, limit: 50 }),
     enabled: !!instanceId && !!remoteJid,
-    staleTime: 10_000,
-    refetchInterval: 10_000,
+    staleTime: 30_000, // 30 segundos
+    refetchInterval: 30_000, // 30 segundos
   });
 }
 
