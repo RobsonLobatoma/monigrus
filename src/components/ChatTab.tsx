@@ -58,17 +58,18 @@ export default function ChatTab() {
     setMessageText("");
   }, [messageText, selectedInstanceId, selectedChat, sendMessage, toast]);
 
-  const handleSend = () => {
-    if (!messageText.trim() || !selectedInstanceId || !selectedChat) return;
-    sendMessage.mutate(
-      { instanceId: selectedInstanceId, to: selectedChat, text: messageText.trim() },
+  const handleSendMedia = useCallback(() => {
+    if (!mediaUrl.trim() || !selectedInstanceId || !selectedChat) return;
+    sendMedia.mutate(
+      { instanceId: selectedInstanceId, to: selectedChat, mediaUrl: mediaUrl.trim(), mediaType, caption: mediaCaption },
       {
-        onSuccess: () => setMessageText(""),
-        onError: (e: any) => toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" }),
+        onError: (e: any) => toast({ title: "Erro ao enviar mídia", description: e.message, variant: "destructive" }),
       }
     );
-    setMessageText("");
-  };
+    setMediaDialog(false);
+    setMediaUrl("");
+    setMediaCaption("");
+  }, [mediaUrl, selectedInstanceId, selectedChat, mediaType, mediaCaption, sendMedia, toast]);
 
   const handleSendMedia = () => {
     if (!mediaUrl.trim() || !selectedInstanceId || !selectedChat) return;
