@@ -46,10 +46,17 @@ export default function ChatTab() {
     setSelectedChatName(name);
   }, []);
 
-  const filteredChats = (chats || []).filter((c: any) =>
-    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.remoteJid?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleSend = useCallback(() => {
+    if (!messageText.trim() || !selectedInstanceId || !selectedChat) return;
+    sendMessage.mutate(
+      { instanceId: selectedInstanceId, to: selectedChat, text: messageText.trim() },
+      {
+        onSuccess: () => setMessageText(""),
+        onError: (e: any) => toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" }),
+      }
+    );
+    setMessageText("");
+  }, [messageText, selectedInstanceId, selectedChat, sendMessage, toast]);
 
   const handleSend = () => {
     if (!messageText.trim() || !selectedInstanceId || !selectedChat) return;
