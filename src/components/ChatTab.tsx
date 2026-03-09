@@ -96,7 +96,7 @@ export default function ChatTab() {
 
   return (
     <div className="space-y-4">
-      <Select value={selectedInstanceId} onValueChange={(v) => { setSelectedInstanceId(v); setSelectedChat(""); setSelectedChatName(""); }}>
+      <Select value={selectedInstanceId} onValueChange={handleInstanceChange}>
         <SelectTrigger className="w-full max-w-xs">
           <SelectValue placeholder="Selecione uma instância conectada" />
         </SelectTrigger>
@@ -121,141 +121,43 @@ export default function ChatTab() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[calc(100vh-280px)] min-h-[500px]">
-          {/* Chat list */}
+          <ChatList
+            instanceId={selectedInstanceId}
+            chats={chats || []}
+            isLoading={loadingChats}
+            selectedChat={selectedChat}
+            searchTerm={searchTerm}
+            onChatSelect={handleChatSelect}
+            onSearchChange={setSearchTerm}
+          />
+
           <Card className="flex flex-col overflow-hidden">
-            <div className="p-3 border-b">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
-                <Input placeholder="Buscar conversa..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 h-9" />
+            <ChatMessages
+              instanceId={selectedInstanceId}
+              selectedChat={selectedChat}
+              selectedChatName={selectedChatName}
+              messages={messages || []}
+              isLoading={loadingMessages}
+              onEdit={handleEditStart}
+              onDelete={handleDelete}
+            />
+
+            {selectedChat && (
+              <div className="p-3 border-t flex gap-2">
+                <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setMediaDialog(true)}>
+                  <Paperclip className="w-4 h-4" />
+                </Button>
+                <Input
+                  placeholder="Digite sua mensagem..."
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  disabled={sendMessage.isPending}
+                />
+                <Button size="icon" onClick={handleSend} disabled={sendMessage.isPending || !messageText.trim()}>
+                  {sendMessage.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
               </div>
-            </div>
-            <ScrollArea className="flex-1">
-              {loadingChats ? (
-                <div className="space-y-3 p-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <Skeleton className="w-10 h-10 rounded-full" />
-                      <div className="flex-1 space-y-1.5"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div>
-                    </div>
-                  ))}
-                </div>
-              ) : filteredChats.length === 0 ? (
-                <p className="text-muted-foreground text-center text-sm py-8">Nenhuma conversa encontrada</p>
-              ) : (
-                <div className="divide-y">
-                  {filteredChats.map((chat: any) => (
-                    <button
-                      key={chat.remoteJid}
-                      className={`w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-accent/50 transition-colors ${selectedChat === chat.remoteJid ? "bg-accent" : ""}`}
-                      onClick={() => { setSelectedChat(chat.remoteJid); setSelectedChatName(chat.name); }}
-                    >
-                      <ContactAvatar
-                        instanceId={selectedInstanceId}
-                        remoteJid={chat.remoteJid}
-                        name={chat.name}
-                        isGroup={isGroup(chat.remoteJid)}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-sm truncate">{chat.name}</span>
-                          <span className="text-xs text-muted-foreground shrink-0 ml-2">{formatTime(chat.timestamp)}</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">{chat.lastMessage || "..."}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </Card>
-
-          {/* Messages */}
-          <Card className="flex flex-col overflow-hidden">
-            {!selectedChat ? (
-              <CardContent className="flex-1 flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">Selecione uma conversa</p>
-                </div>
-              </CardContent>
-            ) : (
-              <>
-                <div className="px-4 py-3 border-b flex items-center gap-3">
-                  <ContactAvatar
-                    instanceId={selectedInstanceId}
-                    remoteJid={selectedChat}
-                    name={selectedChatName}
-                    isGroup={isGroup(selectedChat)}
-                    className="w-8 h-8"
-                  />
-                  <div>
-                    <p className="font-medium text-sm">{selectedChatName}</p>
-                    <p className="text-xs text-muted-foreground">{selectedChat}</p>
-                  </div>
-                </div>
-
-                <ScrollArea className="flex-1 p-4">
-                  {loadingMessages ? (
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : !messages?.length ? (
-                    <p className="text-muted-foreground text-center text-sm py-8">Nenhuma mensagem encontrada</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {messages.map((msg: any, i: number) => (
-                        <div key={msg.id || i} className={`flex ${msg.fromMe ? "justify-end" : "justify-start"} group`}>
-                          <div className={`max-w-[75%] rounded-lg px-3 py-2 text-sm relative ${msg.fromMe ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                            {msg.fromMe && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/10">
-                                    <MoreVertical className="w-3.5 h-3.5" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="min-w-[120px]">
-                                  <DropdownMenuItem onClick={() => { setEditingMsg(msg); setEditText(msg.text); }}>
-                                    <Pencil className="w-3.5 h-3.5 mr-2" /> Editar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(msg)}>
-                                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Apagar
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                            {!msg.fromMe && msg.pushName && (
-                              <p className="text-xs font-semibold mb-0.5 opacity-80">{msg.pushName}</p>
-                            )}
-                            <MediaRenderer msg={msg} instanceId={selectedInstanceId} />
-                            {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
-                            {!msg.text && !msg.mediaUrl && <p className="whitespace-pre-wrap break-words">[{msg.messageType}]</p>}
-                            <p className={`text-[10px] mt-1 ${msg.fromMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                              {formatTime(msg.timestamp)}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  )}
-                </ScrollArea>
-
-                <div className="p-3 border-t flex gap-2">
-                  <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setMediaDialog(true)}>
-                    <Paperclip className="w-4 h-4" />
-                  </Button>
-                  <Input
-                    placeholder="Digite sua mensagem..."
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-                    disabled={sendMessage.isPending}
-                  />
-                  <Button size="icon" onClick={handleSend} disabled={sendMessage.isPending || !messageText.trim()}>
-                    {sendMessage.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </>
             )}
           </Card>
         </div>
