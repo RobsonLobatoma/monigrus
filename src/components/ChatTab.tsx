@@ -35,15 +35,16 @@ export default function ChatTab() {
   const deleteMessage = useDeleteMessage();
   const editMessage = useEditMessage();
 
-  useEffect(() => {
-    if (!selectedInstanceId && connectedInstances.length > 0) {
-      setSelectedInstanceId(connectedInstances[0].id);
-    }
-  }, [connectedInstances, selectedInstanceId]);
+  const handleInstanceChange = useCallback((instanceId: string) => {
+    setSelectedInstanceId(instanceId);
+    setSelectedChat("");
+    setSelectedChatName("");
+  }, []);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  const handleChatSelect = useCallback((remoteJid: string, name: string) => {
+    setSelectedChat(remoteJid);
+    setSelectedChatName(name);
+  }, []);
 
   const filteredChats = (chats || []).filter((c: any) =>
     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
