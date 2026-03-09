@@ -22,8 +22,9 @@ export function useMessageLog(instanceId?: string) {
 export function useWebhooksLog(instanceId?: string) {
   return useQuery({
     queryKey: ["whatsapp-webhooks-log", instanceId],
-    queryFn: () => invoke("get-webhooks-log", { instanceId, limit: 200 }),
-    staleTime: 15_000,
+    queryFn: () => invoke("get-webhooks-log", { instanceId, limit: 50 }),
+    staleTime: 60_000,
+    enabled: !!instanceId,
   });
 }
 
