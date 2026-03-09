@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
-import { Shield, Search, CalendarIcon, X, Filter } from "lucide-react";
+import { Shield, Search, CalendarIcon, X, Filter, RefreshCw } from "lucide-react";
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { useGrupos } from "@/hooks/useGrupos";
+import { useMonitoramentoGrupos } from "@/hooks/useMonitoramentoGrupos";
 import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useTeams } from "@/hooks/useTeams";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
