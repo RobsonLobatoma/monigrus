@@ -362,12 +362,26 @@ export default function Monitoramento() {
           </thead>
 
           <tbody>
-            {!hasRealData ? (
+            {gruposLoading ? (
+              <tr>
+                <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                    <RefreshCw size={24} style={{ animation: "spin 1s linear infinite", opacity: 0.5 }} />
+                    <span>Carregando grupos...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : !hasRealData ? (
               <tr>
                 <td colSpan={8} style={{ textAlign: "center", padding: "48px", color: "hsl(var(--muted-foreground))", fontSize: "14px" }}>
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "16px", fontWeight: 600 }}>Nenhum grupo sincronizado</span>
-                    <span>Vá para a página de <a href="/conexoes" style={{ color: "hsl(var(--primary))", textDecoration: "underline" }}>Conexões</a> para conectar uma instância e sincronizar grupos do WhatsApp.</span>
+                    <Shield size={32} style={{ opacity: 0.3 }} />
+                    <span style={{ fontSize: "16px", fontWeight: 600 }}>Nenhum grupo cadastrado</span>
+                    <span style={{ maxWidth: "420px", textAlign: "center", lineHeight: 1.6 }}>
+                      Sincronize grupos via{" "}
+                      <a href="/conexoes" style={{ color: "hsl(var(--primary))", textDecoration: "underline" }}>Conexões</a>
+                      {" "}ou aguarde — a tabela atualiza automaticamente em tempo real quando novos grupos forem adicionados.
+                    </span>
                   </div>
                 </td>
               </tr>
