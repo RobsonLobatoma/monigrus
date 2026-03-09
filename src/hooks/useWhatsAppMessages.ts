@@ -13,16 +13,18 @@ const invoke = async (action: string, params: Record<string, any> = {}) => {
 export function useMessageLog(instanceId?: string) {
   return useQuery({
     queryKey: ["whatsapp-message-log", instanceId],
-    queryFn: () => invoke("get-message-log", { instanceId, limit: 200 }),
-    staleTime: 15_000,
+    queryFn: () => invoke("get-message-log", { instanceId, limit: 50 }),
+    staleTime: 60_000,
+    enabled: !!instanceId,
   });
 }
 
 export function useWebhooksLog(instanceId?: string) {
   return useQuery({
     queryKey: ["whatsapp-webhooks-log", instanceId],
-    queryFn: () => invoke("get-webhooks-log", { instanceId, limit: 200 }),
-    staleTime: 15_000,
+    queryFn: () => invoke("get-webhooks-log", { instanceId, limit: 50 }),
+    staleTime: 60_000,
+    enabled: !!instanceId,
   });
 }
 
@@ -31,18 +33,18 @@ export function useChats(instanceId?: string) {
     queryKey: ["whatsapp-chats", instanceId],
     queryFn: () => invoke("get-chats", { instanceId }),
     enabled: !!instanceId,
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 120_000, // 2 minutos
+    refetchInterval: 60_000, // 1 minuto
   });
 }
 
 export function useChatMessages(instanceId?: string, remoteJid?: string) {
   return useQuery({
     queryKey: ["whatsapp-chat-messages", instanceId, remoteJid],
-    queryFn: () => invoke("find-messages", { instanceId, remoteJid, limit: 100 }),
+    queryFn: () => invoke("find-messages", { instanceId, remoteJid, limit: 50 }),
     enabled: !!instanceId && !!remoteJid,
-    staleTime: 10_000,
-    refetchInterval: 10_000,
+    staleTime: 30_000, // 30 segundos
+    refetchInterval: 30_000, // 30 segundos
   });
 }
 
