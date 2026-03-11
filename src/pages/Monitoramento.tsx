@@ -3,7 +3,6 @@ import { Shield, Search, CalendarIcon, X, Filter, RefreshCw } from "lucide-react
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { useMonitoramentoGrupos } from "@/hooks/useMonitoramentoGrupos";
-import { useGroupConversations } from "@/hooks/useGroupConversations";
 import { useTeams } from "@/hooks/useTeams";
 import { useCurrentUserRole } from "@/hooks/useCurrentUserRole";
 import { useMonitoringSettings } from "@/hooks/useMonitoringSettings";
@@ -96,7 +95,6 @@ function parseDateString(dateStr: string): Date | null {
 
 export default function Monitoramento() {
   const { data: dbGrupos, isLoading: gruposLoading } = useMonitoramentoGrupos();
-  useGroupConversations();
   const { data: teams } = useTeams();
   const { role, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
