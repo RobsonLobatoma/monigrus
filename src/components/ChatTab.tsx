@@ -41,7 +41,7 @@ export default function ChatTab() {
   }, [effectiveInstanceId]);
 
   const { data: chats, isLoading: loadingChats } = useChats(effectiveInstanceId);
-  const { data: messages, isLoading: loadingMessages } = useChatMessages(selectedInstanceId, selectedChat);
+  const { data: messages, isLoading: loadingMessages } = useChatMessages(effectiveInstanceId, selectedChat);
   const sendMessage = useSendMessage();
   const sendMedia = useSendMedia();
   const deleteMessage = useDeleteMessage();
