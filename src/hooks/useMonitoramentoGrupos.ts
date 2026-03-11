@@ -78,7 +78,13 @@ export function useMonitoramentoGrupos() {
 
         if (missingInstanceIds.length > 0) {
           missingInstanceIds.forEach((id) => attemptedSyncRef.current.add(id));
-          await Promise.allSettled(missingInstanceIds.map((id) => syncGroupsForInstance(id)));
+          const syncResults = await Promise.allSettled(missingInstanceIds.map((id) => syncGroupsForInstance(id)));
+
+          syncResults.forEach((result, index) => {
+            if (result.status === "rejected") {
+              attemptedSyncRef.current.delete(missingInstanceIds[index]);
+            }
+          });
         }
       }
 
