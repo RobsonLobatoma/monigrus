@@ -108,33 +108,17 @@ export default function ChatTab() {
 
   return (
     <div className="space-y-4">
-      <Select value={selectedInstanceId} onValueChange={handleInstanceChange}>
-        <SelectTrigger className="w-full max-w-xs">
-          <SelectValue placeholder="Selecione uma instância conectada" />
-        </SelectTrigger>
-        <SelectContent>
-          {connectedInstances.map((inst: any) => (
-            <SelectItem key={inst.id} value={inst.id}>
-              {inst.instance_name} {inst.phone_number ? `(${inst.phone_number})` : ""}
-            </SelectItem>
-          ))}
-          {connectedInstances.length === 0 && (
-            <div className="px-2 py-3 text-sm text-muted-foreground text-center">Nenhuma instância conectada</div>
-          )}
-        </SelectContent>
-      </Select>
-
-      {!selectedInstanceId ? (
+      {!effectiveInstanceId ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <MessageSquare className="w-12 h-12 mb-3 opacity-40" />
-            <p>Selecione uma instância conectada para ver as conversas</p>
+            <p>Nenhuma instância conectada. Crie e conecte uma instância na aba "Instâncias".</p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 h-[calc(100vh-280px)] min-h-[500px]">
           <ChatList
-            instanceId={selectedInstanceId}
+            instanceId={effectiveInstanceId}
             chats={chats || []}
             isLoading={loadingChats}
             selectedChat={selectedChat}
@@ -145,7 +129,7 @@ export default function ChatTab() {
 
           <Card className="flex flex-col overflow-hidden">
             <ChatMessages
-              instanceId={selectedInstanceId}
+              instanceId={effectiveInstanceId}
               selectedChat={selectedChat}
               selectedChatName={selectedChatName}
               messages={messages || []}
