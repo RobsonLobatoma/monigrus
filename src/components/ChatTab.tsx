@@ -47,11 +47,11 @@ export default function ChatTab() {
   const deleteMessage = useDeleteMessage();
   const editMessage = useEditMessage();
 
-  const handleInstanceChange = useCallback((instanceId: string) => {
-    setSelectedInstanceId(instanceId);
+  // Reset chat selection when instance changes
+  React.useEffect(() => {
     setSelectedChat("");
     setSelectedChatName("");
-  }, []);
+  }, [effectiveInstanceId]);
 
   const handleChatSelect = useCallback((remoteJid: string, name: string) => {
     setSelectedChat(remoteJid);
