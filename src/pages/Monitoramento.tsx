@@ -95,7 +95,6 @@ function parseDateString(dateStr: string): Date | null {
 
 export default function Monitoramento() {
   const { data: dbGrupos, isLoading: gruposLoading } = useMonitoramentoGrupos();
-  useGroupConversations();
   const { data: teams } = useTeams();
   const { role, loading: roleLoading } = useCurrentUserRole();
   const [search, setSearch] = useState("");
