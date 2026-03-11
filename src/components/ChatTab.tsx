@@ -59,16 +59,16 @@ export default function ChatTab() {
   }, []);
 
   const handleSend = useCallback(() => {
-    if (!messageText.trim() || !selectedInstanceId || !selectedChat) return;
+    if (!messageText.trim() || !effectiveInstanceId || !selectedChat) return;
     sendMessage.mutate(
-      { instanceId: selectedInstanceId, to: selectedChat, text: messageText.trim() },
+      { instanceId: effectiveInstanceId, to: selectedChat, text: messageText.trim() },
       {
         onSuccess: () => setMessageText(""),
         onError: (e: any) => toast({ title: "Erro ao enviar", description: e.message, variant: "destructive" }),
       }
     );
     setMessageText("");
-  }, [messageText, selectedInstanceId, selectedChat, sendMessage, toast]);
+  }, [messageText, effectiveInstanceId, selectedChat, sendMessage, toast]);
 
   const handleSendMedia = useCallback(() => {
     if (!mediaUrl.trim() || !selectedInstanceId || !selectedChat) return;
