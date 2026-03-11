@@ -71,9 +71,9 @@ export default function ChatTab() {
   }, [messageText, effectiveInstanceId, selectedChat, sendMessage, toast]);
 
   const handleSendMedia = useCallback(() => {
-    if (!mediaUrl.trim() || !selectedInstanceId || !selectedChat) return;
+    if (!mediaUrl.trim() || !effectiveInstanceId || !selectedChat) return;
     sendMedia.mutate(
-      { instanceId: selectedInstanceId, to: selectedChat, mediaUrl: mediaUrl.trim(), mediaType, caption: mediaCaption },
+      { instanceId: effectiveInstanceId, to: selectedChat, mediaUrl: mediaUrl.trim(), mediaType, caption: mediaCaption },
       {
         onError: (e: any) => toast({ title: "Erro ao enviar mídia", description: e.message, variant: "destructive" }),
       }
@@ -81,7 +81,7 @@ export default function ChatTab() {
     setMediaDialog(false);
     setMediaUrl("");
     setMediaCaption("");
-  }, [mediaUrl, selectedInstanceId, selectedChat, mediaType, mediaCaption, sendMedia, toast]);
+  }, [mediaUrl, effectiveInstanceId, selectedChat, mediaType, mediaCaption, sendMedia, toast]);
 
   const handleDelete = useCallback((msg: any) => {
     deleteMessage.mutate(
