@@ -85,21 +85,21 @@ export default function ChatTab() {
 
   const handleDelete = useCallback((msg: any) => {
     deleteMessage.mutate(
-      { instanceId: selectedInstanceId, messageId: msg.id, remoteJid: selectedChat, fromMe: msg.fromMe },
+      { instanceId: effectiveInstanceId, messageId: msg.id, remoteJid: selectedChat, fromMe: msg.fromMe },
       { onError: (e: any) => toast({ title: "Erro ao apagar", description: e.message, variant: "destructive" }) }
     );
-  }, [selectedInstanceId, selectedChat, deleteMessage, toast]);
+  }, [effectiveInstanceId, selectedChat, deleteMessage, toast]);
 
   const handleEdit = useCallback(() => {
     if (!editingMsg || !editText.trim()) return;
     editMessage.mutate(
-      { instanceId: selectedInstanceId, messageId: editingMsg.id, remoteJid: selectedChat, text: editText.trim(), fromMe: editingMsg.fromMe },
+      { instanceId: effectiveInstanceId, messageId: editingMsg.id, remoteJid: selectedChat, text: editText.trim(), fromMe: editingMsg.fromMe },
       {
         onSuccess: () => { setEditingMsg(null); setEditText(""); },
         onError: (e: any) => toast({ title: "Erro ao editar", description: e.message, variant: "destructive" }),
       }
     );
-  }, [editingMsg, editText, selectedInstanceId, selectedChat, editMessage, toast]);
+  }, [editingMsg, editText, effectiveInstanceId, selectedChat, editMessage, toast]);
 
   const handleEditStart = useCallback((msg: any) => {
     setEditingMsg(msg);
