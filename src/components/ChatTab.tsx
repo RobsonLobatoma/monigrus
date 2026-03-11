@@ -28,7 +28,20 @@ export default function ChatTab() {
   const { data: instances } = useWhatsAppInstances();
   const connectedInstances = (instances || []).filter((i: any) => i.status === "connected");
 
-  const { data: chats, isLoading: loadingChats } = useChats(selectedInstanceId);
+  // Auto-select first connected instance
+  const activeInstanceId = connectedInstances.length > 0 ? connectedInstances[0].id : "";
+  const effectiveInstanceId = selectedInstanceId && connectedInstances.some((i: any) => i.id === selectedInstanceId)
+    ? selectedInstanceId
+    : activeInstanceId;
+
+  // Auto-update selection when instances change
+  React.useEffect(() => {
+    if (effectiveInstanceId && effectiveInstanceId !== selectedInstanceId) {
+      setSelectedInstanceId(effectiveInstanceId);
+    }
+  }, [effectiveInstanceId]);
+
+  const { data: chats, isLoading: loadingChats } = useChats(effectiveInstanceId);
   const { data: messages, isLoading: loadingMessages } = useChatMessages(selectedInstanceId, selectedChat);
   const sendMessage = useSendMessage();
   const sendMedia = useSendMedia();
